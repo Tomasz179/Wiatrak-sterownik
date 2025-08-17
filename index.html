@@ -8,7 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
-    h1 { text-align:center; }
+    h1 { text-align:center; margin-top:10px; }
     .card { background:white; padding:15px; margin:10px auto; border-radius:10px; max-width:420px;
             box-shadow:0 2px 5px rgba(0,0,0,0.2); }
     .label { font-weight:bold; }
@@ -17,52 +17,67 @@
              background:#0d6efd; color:white; font-size:15px; cursor:pointer; }
     button.off { background:#dc3545; }
     .unit { margin-left:4px; color:#666; font-weight:500 }
-    .windmill { width:120px; height:120px; margin:0 auto 15px; position:relative; }
-    .rotor { width:100px; height:100px; position:absolute; top:10px; left:10px; transform-origin:50% 50%; animation:spin 4s linear infinite; }
-    .blade { width:6px; height:40px; background:#0d6efd; position:absolute; left:47px; top:10px; border-radius:3px; transform-origin:50% 80%; }
-    .blade:nth-child(2) { transform:rotate(120deg); }
-    .blade:nth-child(3) { transform:rotate(240deg); }
-    .hub { width:16px; height:16px; background:#333; border-radius:50%; position:absolute; top:42px; left:42px; }
-    @keyframes spin { from{transform:rotate(0deg);} to{transform:rotate(360deg);} }
-    #qrcode { text-align:center; margin-top:20px; }
+    #qrcode { margin:30px auto; width:fit-content; }
+
+    /* --- WIATRAK SVG --- */
+    .wind-svg { display:block; margin:0 auto 6px; width:240px; height:auto; }
+    .blades {
+      transform-origin: 32px 24px;        /* środek piasty */
+      animation: spin 4s linear infinite; /* płynny obrót łopat */
+    }
+    @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
   </style>
 </head>
 <body>
-  <h1>🌬️ Sterownik Wiatrowy</h1>
 
-  <!-- Wiatrak -->
-  <div class="windmill">
-    <div class="rotor">
-      <div class="blade"></div>
-      <div class="blade"></div>
-      <div class="blade"></div>
-      <div class="hub"></div>
-    </div>
-  </div>
+  <!-- WIATRAK (SVG, piasta nieruchoma, łopaty zakotwiczone w piaście) -->
+  <svg class="wind-svg" viewBox="0 0 64 64" aria-hidden="true">
+    <!-- wieża -->
+    <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
+    <!-- podłoże -->
+    <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
+    <!-- piasta (NIE rusza się) -->
+    <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
+    <!-- łopaty (TYLKO ta grupa się obraca wokół piasty) -->
+    <g class="blades">
+      <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
+      <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
+      <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
+    </g>
+  </svg>
 
-  <!-- Sensory -->
+  <h1>Sterownik Wiatrowy</h1>
+
+  <!-- Karty z wartościami -->
   <div class="card"><span class="label">Wiatrak (energia)</span> <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span></div>
   <div class="card"><span class="label">Moc ładowania</span> <span class="value"><span id="power">—</span><span class="unit">W</span></span></div>
   <div class="card"><span class="label">Naładowanie baterii</span> <span class="value"><span id="soc">—</span><span class="unit">%</span></span></div>
   <div class="card"><span class="label">Napięcie baterii</span> <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
   <div class="card"><span class="label">Prąd ładowania</span> <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
 
-  <!-- Hamulec -->
   <div class="card">
     <span class="label">Hamulec turbiny</span>
     <span class="value" id="brake">—</span><br><br>
     <button id="btnBrake">Przełącz hamulec</button>
   </div>
 
-  <!-- Kod QR -->
-  <div class="card" id="qrcode"></div>
+  <!-- Kod QR do strony GitHub Pages -->
+  <div id="qrcode"></div>
 
   <script>
-    // ---- USTAWIENIA ----
-    const PREFIX = "sterownik_wiatrowy";                         
-    const WS_URL = "wss://broker.hivemq.com:8884/mqtt";          
+    // ---- USTAWIENIA MQTT ----
+    const PREFIX = "sterownik_wiatrowy";
+    const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
 
-    // ---- POŁĄCZENIE ----
+    // ---- FORMATOWANIE ----
+    // 1 miejsce po przecinku + przecinek zamiast kropki
+    function fmt1dec(n) {
+      const x = parseFloat(String(n).replace(',', '.'));
+      if (isNaN(x)) return n; // jak przyjdzie tekst, nic nie ruszamy
+      return x.toFixed(1).replace('.', ',');
+    }
+
+    // ---- POŁĄCZENIE MQTT ----
     const client = mqtt.connect(WS_URL, { clientId: "webdash_" + Math.random().toString(16).slice(2) });
 
     const els = {
@@ -74,7 +89,6 @@
       brake:document.getElementById("brake"),
       btn:  document.getElementById("btnBrake"),
     };
-
     let brakeState = "OFF";
 
     client.on("connect", () => {
@@ -82,23 +96,43 @@
     });
 
     client.on("message", (topic, payload) => {
-      const val = payload.toString();
+      const valRaw = payload.toString();
       const parts = topic.split("/");
       const ix = parts.indexOf("sensor") >= 0 ? parts.indexOf("sensor") : parts.indexOf("switch");
       const key = (ix >= 0 && parts[ix+1]) ? parts[ix+1].toLowerCase() : "";
 
-      if (key.includes("wiatrak") && key.includes("kwh")) { els.kwh.textContent = val; return; }
-      if (key.startsWith("moc")) { els.power.textContent = val; return; }
-      if (key.includes("procent") || key.includes("naladowania")) { els.soc.textContent = val; return; }
-      if (key.startsWith("nap")) { els.bat_v.textContent = val; return; }
-      if (key.startsWith("pr")) { els.bat_a.textContent = val; return; }
+      // kWh
+      if (key.includes("wiatrak") && key.includes("kwh")) { 
+        els.kwh.textContent = fmt1dec(valRaw); 
+        return; 
+      }
+      // Moc (W)
+      if (key.startsWith("moc")) { 
+        els.power.textContent = fmt1dec(valRaw); 
+        return; 
+      }
+      // SOC (%)
+      if (key.includes("procent") || key.includes("naladowania")) { 
+        els.soc.textContent = fmt1dec(valRaw); 
+        return; 
+      }
+      // Napięcie baterii (V)
+      if (key.startsWith("nap")) { 
+        els.bat_v.textContent = fmt1dec(valRaw); 
+        return; 
+      }
+      // Prąd ładowania (A)
+      if (key.startsWith("pr")) { 
+        els.bat_a.textContent = fmt1dec(valRaw); 
+        return; 
+      }
 
+      // Hamulec
       if (key.includes("hamulec")) {
-        brakeState = val;
-        els.brake.textContent = (val === "ON") ? "Włączony" : "Wyłączony";
-        els.btn.textContent = (val === "ON") ? "Wyłącz hamulec" : "Włącz hamulec";
-        els.btn.className = (val === "ON") ? "off" : "";
-        return;
+        brakeState = valRaw;
+        els.brake.textContent = (valRaw === "ON") ? "Włączony" : "Wyłączony";
+        els.btn.textContent = (valRaw === "ON") ? "Wyłącz hamulec" : "Włącz hamulec";
+        els.btn.className = (valRaw === "ON") ? "off" : "";
       }
     });
 
@@ -107,7 +141,7 @@
       client.publish(`${PREFIX}/switch/hamulec_turbiny/command`, next);
     });
 
-    // ---- QR Code ----
+    // ---- QR (stały adres GitHub Pages) ----
     new QRCode(document.getElementById("qrcode"), {
       text: "https://tomasz179.github.io/Wiatrak-sterownik/",
       width: 200,
