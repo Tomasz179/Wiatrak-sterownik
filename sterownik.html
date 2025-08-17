@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sterownik Wiatrowy – MQTT</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- biblioteka do QR -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
+    h1 { text-align:center; margin-top:15px; }
+    .logo-wind { display:block; margin:0 auto; width:220px; height:auto; }
+    .blades {
+      transform-origin: 32px 24px; /* środek piasty */
+      animation: spin 4s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    .card { background:white; padding:15px; margin:10px auto; border-radius:10px; max-width:420px;
+            box-shadow:0 2px 5px rgba(0,0,0,0.2); }
+    .label { font-weight:bold; }
+    .value { float:right; font-weight:700; }
+    button { padding:10px 16px; margin-top:10px; border:none; border-radius:6px;
+             background:#0d6efd; color:white; font-size:15px; cursor:pointer; }
+    button.off { background:#dc3545; }
+    .unit { margin-left:4px; color:#666; font-weight:500 }
+    #qrcode { margin:30px auto; width:fit-content; }
+    #qrtext { text-align:center; font-size:14px; color:#333; margin-top:8px; }
+  </style>
+</head>
+<body>
+
+  <!-- WIATRAK -->
+  <svg class="logo-wind" viewBox="0 0 64 64" aria-hidden="true">
+    <!-- wieża -->
+    <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
+    <!-- podłoże -->
+    <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
+    <!-- piasta -->
+    <circle cx="32" cy="24" r="4" fill="#2c3e50"/>
+    <!-- łopaty -->
+    <g class="blades">
+      <polygon points="32,24 30,24 28,-10 36,-10 34,24" fill="#2980b9"/>
+      <polygon points="32,24 30,24 28,-10 36,-10 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
+      <polygon points="32,24 30,24 28,-10 36,-10 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
+    </g>
+  </svg>
+
+  <h1>Sterownik Wiatrowy</h1>
+
+  <div class="card"><span class="label">Wiatrak (energia)</span> <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span></div>
+  <div class="card"><span class="label">Moc ładowania</span> <span class="value"><span id="power">—</span><span class="unit">W</span></span></div>
+  <div class="card"><span class="label">Naładowanie baterii</span> <span class="value"><span id="soc">—</span><span class="unit">%</span></span></div>
+  <div class="card"><span class="label">Napięcie baterii</span> <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
+  <div class="card"><span class="label">Prąd ładowania</span> <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
+
+  <div class="card">
+    <span class="label">Hamulec turbiny</span>
+    <span class="value" id="brake">—</span><br><br>
+    <button id="btnBrake">Przełącz hamulec</button>
+  </div>
+
+  <!-- Miejsce na QR -->
+  <div id="qrcode"></div>
+  <div id="qrtext">Zeskanuj kod aby otworzyć plik Google Drive</div>
+
+  <script>
+    // ---- USTAWIENIA ----
+    const PREFIX = "sterownik_wiatrowy";                             
+    const WS_URL = "wss://broker.hivemq.com:8884/mqtt";              
+
+    // ---- POŁĄCZENIE MQTT ----
+    const client = mqtt.connect(WS_URL, { clientId: "webdash_" + Math.random().toString(16).slice(2) });
+
+    const els = {
+      kwh:  document.getElementById("kwh"),
+      power:document.getElementById("power"),
+      soc:  document.getElementById("soc"),
+      bat_v:document.getElementById("bat_v"),
+      bat_a:document.getElementById("bat_a"),
+      brake:document.getElementById("brake"),
+      btn:  document.getElementById("btnBrake"),
+    };
+
+    let brakeState = "OFF";
+
+    client.on("connect", () => {
+      client.subscribe(`${PREFIX}/#`);
+    });
+
+    client.on("message", (topic, payload) => {
+      const val = payload.toString();
+      const parts = topic.split("/");
+      const ix = parts.indexOf("sensor") >= 0 ? parts.indexOf("sensor") : parts.indexOf("switch");
+      const key = (ix >= 0 && parts[ix+1]) ? parts[ix+1].toLowerCase() : "";
+
+      if (key.includes("wiatrak") && key.includes("kwh")) { els.kwh.textContent = val; return; }
+      if (key.startsWith("moc")) { els.power.textContent = val; return; }
+      if (key.includes("procent") || key.includes("naladowania")) { els.soc.textContent = val; return; }
+      if (key.startsWith("nap")) { els.bat_v.textContent = val; return; }
+      if (key.startsWith("pr")) { els.bat_a.textContent = val; return; }
+
+      if (key.includes("hamulec")) {
+        brakeState = val;
+        els.brake.textContent = (val === "ON") ? "Włączony" : "Wyłączony";
+        els.btn.textContent = (val === "ON") ? "Wyłącz hamulec" : "Włącz hamulec";
+        els.btn.className = (val === "ON") ? "off" : "";
+        return;
+      }
+    });
+
+    els.btn.addEventListener("click", () => {
+      const next = (brakeState === "ON") ? "OFF" : "ON";
+      client.publish(`${PREFIX}/switch/hamulec_turbiny/command`, next);
+    });
+
+    // ---- GENERATOR QR (stały link do Google Drive) ----
+    new QRCode(document.getElementById("qrcode"), {
+      text: "https://drive.google.com/file/d/1EVwv9z5FxDvljVDL0ightOB7IJl1TNtO/view?usp=drive_link",
+      width: 160,
+      height: 160
+    });
+  </script>
+</body>
+</html>
