@@ -4,94 +4,84 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sterownik Wiatrowy – MQTT</title>
-  <!-- Biblioteki -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
-
   <style>
     body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
+
+    /* BLOKADA HASŁA */
+    #lock { position:fixed; inset:0; background:#0b0f1a; display:flex; align-items:center; justify-content:center; z-index:9999; }
+    #lock .box { background:#fff; padding:20px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); width:320px; text-align:center; }
+    #lock h3 { margin:0 0 10px; }
+    #lock input { width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; margin-bottom:10px; }
+    #lock button { width:100%; padding:10px; border:none; border-radius:8px; background:#0d6efd; color:#fff; font-size:15px; cursor:pointer; }
+    #lock p { color:#c00; min-height:1em; font-size:13px; }
+
     h1 { text-align:center; margin:8px 0 14px; }
-
-    /* Pasek statusu */
-    .topbar { max-width:900px; margin:0 auto 10px; display:flex; justify-content:flex-end; }
-    .status { font-size:12px; padding:4px 10px; border-radius:999px; background:#eee; color:#333; }
-    .status.ok { background:#d1fae5; color:#065f46; }
-    .status.err { background:#fee2e2; color:#7f1d1d; }
-
-    /* Karty */
-    .wrap { max-width:900px; margin:0 auto; }
-    .cards { display:grid; grid-template-columns:1fr; gap:10px; }
-    @media (min-width: 700px) { .cards { grid-template-columns: 1fr 1fr; } }
-    .card { background:white; padding:15px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.2); }
+    .card { background:white; padding:15px; margin:10px auto; border-radius:10px; max-width:420px; box-shadow:0 2px 5px rgba(0,0,0,0.2); }
     .label { font-weight:bold; }
     .value { float:right; font-weight:700; }
     .unit { margin-left:4px; color:#666; font-weight:500 }
-    button { padding:10px 16px; margin-top:10px; border:none; border-radius:6px;
-             background:#0d6efd; color:white; font-size:15px; cursor:pointer; }
+    button { padding:10px 16px; margin-top:10px; border:none; border-radius:6px; background:#0d6efd; color:white; font-size:15px; cursor:pointer; }
     button.off { background:#dc3545; }
 
-    /* QR */
-    #qrcode { margin:26px auto; width:fit-content; }
-
-    /* --- WIATRAK SVG --- */
+    /* Wiatrak */
     .wind-svg { display:block; margin:0 auto 6px; width:240px; height:auto; }
-    .blades {
-      transform-origin: 32px 24px;
-      animation: spin var(--dur, 4s) linear infinite;
-      animation-play-state: var(--play, running);
-    }
+    .blades { transform-origin: 32px 24px; animation: spin var(--dur, 4s) linear infinite; animation-play-state: var(--play, running); }
     @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
 
     /* Wykres */
-    .chart-card { padding:15px; background:#fff; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.2); margin-top:14px; }
+    .chart-card { padding:15px; background:#fff; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.2); margin-top:14px; max-width:900px; margin-left:auto; margin-right:auto; }
     .chart-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
     .chart-toolbar input[type="date"] { padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
     .muted { color:#666; font-size:13px; }
+    #qrcode { margin:26px auto; width:fit-content; }
   </style>
 </head>
 <body>
-
-  <!-- WIATRAK -->
-  <svg class="wind-svg" viewBox="0 0 64 64" aria-hidden="true">
-    <!-- wieża -->
-    <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
-    <!-- podłoże -->
-    <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
-    <!-- piasta (nieruchoma) -->
-    <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
-    <!-- łopaty (obracają się) -->
-    <g class="blades" id="blades">
-      <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
-      <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
-      <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
-    </g>
-  </svg>
-
-  <div class="topbar">
-    <div class="status" id="status">Łączenie…</div>
+  <!-- HASŁO -->
+  <div id="lock">
+    <div class="box">
+      <h3>🔐 Dostęp chroniony</h3>
+      <input id="pwd" type="password" placeholder="Hasło" autocomplete="current-password" />
+      <button id="unlockBtn">Odblokuj</button>
+      <p id="lockMsg"></p>
+    </div>
   </div>
 
-  <h1>Sterownik Wiatrowy</h1>
+  <!-- APLIKACJA -->
+  <div id="app" style="display:none;">
 
-  <div class="wrap">
-    <!-- Karty -->
-    <div class="cards">
-      <div class="card"><span class="label">Wiatrak (energia)</span> <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span></div>
-      <div class="card"><span class="label">Moc ładowania</span> <span class="value"><span id="power">—</span><span class="unit">W</span></span></div>
-      <div class="card"><span class="label">Naładowanie baterii</span> <span class="value"><span id="soc">—</span><span class="unit">%</span></span></div>
-      <div class="card"><span class="label">Napięcie baterii</span> <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
-      <div class="card"><span class="label">Prąd ładowania</span> <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
+    <!-- Wiatrak -->
+    <svg class="wind-svg" viewBox="0 0 64 64">
+      <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
+      <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
+      <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
+      <g class="blades" id="blades">
+        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
+        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
+        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
+      </g>
+    </svg>
 
-      <div class="card">
-        <span class="label">Hamulec turbiny</span>
-        <span class="value" id="brake">—</span><br><br>
-        <button id="btnBrake">Przełącz hamulec</button>
-      </div>
+    <h1>🌬️ Sterownik Wiatrowy</h1>
+
+    <!-- Sensory -->
+    <div class="card"><span class="label">Wiatrak (energia)</span> <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span></div>
+    <div class="card"><span class="label">Moc ładowania</span> <span class="value"><span id="power">—</span><span class="unit">W</span></span></div>
+    <div class="card"><span class="label">Naładowanie baterii</span> <span class="value"><span id="soc">—</span><span class="unit">%</span></span></div>
+    <div class="card"><span class="label">Napięcie baterii</span> <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
+    <div class="card"><span class="label">Prąd ładowania</span> <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
+
+    <div class="card">
+      <span class="label">Hamulec turbiny</span>
+      <span class="value" id="brake">—</span><br><br>
+      <button id="btnBrake">Przełącz hamulec</button>
     </div>
 
-    <!-- Wykres (co 30 min) -->
+    <!-- Wykres -->
     <div class="chart-card">
       <div class="chart-toolbar">
         <strong>📊 Wykres mocy (co 30 min)</strong>
@@ -99,228 +89,141 @@
         <input type="date" id="dayPicker">
       </div>
       <canvas id="powerChart" height="220"></canvas>
-      <div class="muted" style="margin-top:6px;">Dane zapisywane lokalnie w przeglądarce (localStorage). Każdy punkt to średnia z półgodzinnego przedziału.</div>
+      <div class="muted" style="margin-top:6px;">Dane zapisywane lokalnie w przeglądarce. Oś czasu: 00:00–24:00 (HH:mm).</div>
     </div>
 
-    <!-- QR -->
     <div id="qrcode"></div>
   </div>
 
-  <script>
-    /* ================== KONFIG ================== */
-    const PREFIX = "sterownik_wiatrowy";
-    const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
+<script>
+  /* ====== HASŁO ====== */
+  const PASSWORD = "tomek1425"; // zmień na swoje
 
-    /* ================== FORMATOWANIE ================== */
-    function parseNumber(val) {
-      const m = String(val).match(/-?\d+(?:[.,]\d+)?/);
-      if (!m) return NaN;
-      return parseFloat(m[0].replace(',', '.'));
+  function getParam(name){
+    const m = new RegExp('[?&]'+name+'=([^&]+)').exec(location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : null;
+  }
+
+  function unlockWith(value){
+    const given = String(value || '').trim();
+    const ok = (given === String(PASSWORD).trim());
+    if (ok){
+      document.getElementById("lock").style.display="none";
+      document.getElementById("app").style.display="block";
+      initApp();
+    } else {
+      document.getElementById("lockMsg").textContent="❌ Złe hasło";
     }
-    // obcięcie do 1 miejsca po przecinku (jak w HA)
-    function fmt1dec(n) {
-      if (isNaN(n)) return '—';
-      const x = Math.floor(n * 10) / 10;
-      return x.toFixed(1).replace('.', ',');
-    }
+    return ok;
+  }
 
-    /* ================== MQTT ================== */
-    const statusEl = document.getElementById("status");
-    const bladesEl = document.getElementById("blades");
-    let connected = false;
-    let brakeState = "OFF";
-    let lastPower = 0;
+  document.getElementById("unlockBtn").onclick = ()=> unlockWith(document.getElementById("pwd").value);
+  document.getElementById("pwd").onkeydown = e=>{ if(e.key==="Enter") unlockWith(document.getElementById("pwd").value); };
 
-    const client = mqtt.connect(WS_URL, { clientId: "webdash_" + Math.random().toString(16).slice(2) });
+  // URL ?pass=1234
+  const passParam = getParam('pass'); if (passParam) unlockWith(passParam);
 
-    client.on("connect", () => {
-      connected = true;
-      statusEl.textContent = "Połączono";
-      statusEl.classList.remove("err"); statusEl.classList.add("ok");
-      client.subscribe(`${PREFIX}/#`);
-      updateRotorVisual();
-    });
-    client.on("reconnect", () => {
-      statusEl.textContent = "Ponowne łączenie…";
-      statusEl.classList.remove("ok"); statusEl.classList.remove("err");
-      connected = false; updateRotorVisual();
-    });
-    client.on("close", () => {
-      statusEl.textContent = "Rozłączono";
-      statusEl.classList.remove("ok"); statusEl.classList.add("err");
-      connected = false; updateRotorVisual();
-    });
-    client.on("error", () => {
-      statusEl.textContent = "Błąd połączenia";
-      statusEl.classList.remove("ok"); statusEl.classList.add("err");
-      connected = false; updateRotorVisual();
-    });
+  /* ====== APLIKACJA ====== */
+  function initApp(){
+    const PREFIX="sterownik_wiatrowy";
+    const WS_URL="wss://broker.hivemq.com:8884/mqtt";
 
-    const els = {
-      kwh:  document.getElementById("kwh"),
+    function parseNumber(val){ const m=String(val).match(/-?\d+(?:[.,]\d+)?/); return m?parseFloat(m[0].replace(',','.')):NaN; }
+    function fmt1dec(n){ if(isNaN(n)) return "—"; return (Math.round(n*10)/10).toFixed(1).replace(".",","); }
+
+    const els={
+      kwh:document.getElementById("kwh"),
       power:document.getElementById("power"),
-      soc:  document.getElementById("soc"),
+      soc:document.getElementById("soc"),
       bat_v:document.getElementById("bat_v"),
       bat_a:document.getElementById("bat_a"),
       brake:document.getElementById("brake"),
-      btn:  document.getElementById("btnBrake"),
+      btn:document.getElementById("btnBrake")
     };
 
-    // prędkość wirnika na podstawie mocy (0W => 8s/obrót, 3000W => 1.5s/obrót)
-    function updateRotorSpeed(powerW) {
-      lastPower = powerW;
-      const p = Math.max(0, Math.min(3000, Number(powerW) || 0));
-      const dur = 8 - (p / 3000) * (8 - 1.5);
-      bladesEl.style.setProperty('--dur', dur.toFixed(2) + 's');
-      updateRotorVisual();
-    }
-    function updateRotorVisual() {
-      const paused = (brakeState === "ON") || !connected;
-      bladesEl.style.setProperty('--play', paused ? 'paused' : 'running');
+    let brakeState="OFF";
+    const blades=document.getElementById("blades");
+
+    function updateRotor(power){
+      const p=Math.max(0,Math.min(3000,Number(power)||0));
+      const dur=8-(p/3000)*(8-1.5);
+      blades.style.setProperty("--dur",dur.toFixed(2)+"s");
+      blades.style.setProperty("--play", brakeState==="ON" ? "paused" : "running");
     }
 
-    client.on("message", (topic, payload) => {
-      const valRaw = payload.toString();
-      const parts = topic.split("/");
-      const ix = parts.indexOf("sensor") >= 0 ? parts.indexOf("sensor") : parts.indexOf("switch");
-      const key = (ix >= 0 && parts[ix+1]) ? parts[ix+1].toLowerCase() : "";
+    // MQTT
+    const client=mqtt.connect(WS_URL,{clientId:"webdash_"+Math.random().toString(16).slice(2)});
+    client.on("connect",()=>client.subscribe(`${PREFIX}/#`));
 
-      // Energia (kWh)
-      if (key.includes("wiatrak") && key.includes("kwh")) { els.kwh.textContent = fmt1dec(parseNumber(valRaw)); return; }
-      // Moc (W) + zapis do historii + prędkość wirnika
-      if (key.includes("moc")) {
-        const p = parseNumber(valRaw);
-        if (!isNaN(p)) {
-          els.power.textContent = fmt1dec(p);
-          updateRotorSpeed(p);
-          savePowerSample(new Date(), p);
-          if (isSameDayStr(dayPicker.value, localYMD(new Date()))) {
-            refreshChartForDay(dayPicker.value);
-          }
-        }
-        return;
-      }
-      // SOC (%)
-      if (key.includes("procent") || key.includes("naladowania") || key.includes("soc")) { els.soc.textContent = fmt1dec(parseNumber(valRaw)); return; }
-      // Napięcie baterii (V)
-      if (key.includes("nap") && (key.includes("bat") || key.includes("bater"))) { els.bat_v.textContent = fmt1dec(parseNumber(valRaw)); return; }
-      // Prąd ładowania (A) – dodane obsługi „ładowania”/„ladowania”
-      if (
-        key.includes("ładowania") || key.includes("ladowania") || // polskie znaki i bez ogonków
-        key.includes("prad") || key.startsWith("pr")              // alternatywne nazwy
-      ) {
-        els.bat_a.textContent = fmt1dec(parseNumber(valRaw));
-        return;
-      }
+    client.on("message",(topic,payload)=>{
+      const val=payload.toString();
+      const parts=topic.split("/");
+      const ix=parts.indexOf("sensor")>=0?parts.indexOf("sensor"):parts.indexOf("switch");
+      const key=(ix>=0&&parts[ix+1])?parts[ix+1].toLowerCase():"";
 
-      // Hamulec
-      if (key.includes("hamulec")) {
-        const v = String(valRaw).trim().toUpperCase();
-        brakeState = v;
-        els.brake.textContent = (v === "ON") ? "Włączony" : "Wyłączony";
-        els.btn.textContent   = (v === "ON") ? "Wyłącz hamulec" : "Włącz hamulec";
-        els.btn.className     = (v === "ON") ? "off" : "";
-        updateRotorVisual();
+      if(key.includes("wiatrak")&&key.includes("kwh")){ els.kwh.textContent=fmt1dec(parseNumber(val)); return; }
+      if(key.startsWith("moc")){ const p=parseNumber(val); els.power.textContent=fmt1dec(p); updateRotor(p); savePower(new Date(),p); refreshChart(); return; }
+      if(key.includes("procent")||key.includes("naladowania")){ els.soc.textContent=fmt1dec(parseNumber(val)); return; }
+      if(key.startsWith("nap")){ els.bat_v.textContent=fmt1dec(parseNumber(val)); return; }
+      if(key.startsWith("pr")){ els.bat_a.textContent=fmt1dec(parseNumber(val)); return; }
+      if(key.includes("hamulec")){
+        brakeState=String(val).trim().toUpperCase();
+        els.brake.textContent=(brakeState==="ON")?"Włączony":"Wyłączony";
+        els.btn.textContent=(brakeState==="ON")?"Wyłącz hamulec":"Włącz hamulec";
+        els.btn.className=(brakeState==="ON")?"off":"";
+        updateRotor(parseNumber(els.power.textContent.replace(",",".")));
       }
     });
 
-    els.btn.addEventListener("click", () => {
-      const next = (brakeState === "ON") ? "OFF" : "ON";
-      client.publish(`${PREFIX}/switch/hamulec_turbiny/command`, next);
-    });
+    els.btn.onclick=()=>{ const next=(brakeState==="ON")?"OFF":"ON"; client.publish(`${PREFIX}/switch/hamulec_turbiny/command`,next); };
 
-    /* ================== QR ================== */
-    new QRCode(document.getElementById("qrcode"), {
-      text: "https://tomasz179.github.io/Wiatrak-sterownik/",
-      width: 200,
-      height: 200
-    });
+    // QR
+    new QRCode(document.getElementById("qrcode"),{text:"https://tomasz179.github.io/Wiatrak-sterownik/",width:200,height:200});
 
-    /* ================== HISTORIA MOCY (localStorage) ================== */
-    // klucz: power:YYYY-MM-DD  | wartość: JSON [{t:<ISO>, p:<number>}...]
-    function localYMD(d){
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,'0');
-      const day = String(d.getDate()).padStart(2,'0');
-      return `${y}-${m}-${day}`;
-    }
-    function isSameDayStr(a,b){ return a === b; }
-
-    function storageKey(ymd){ return "power:" + ymd; }
-
-    function loadDayRaw(ymd){
-      try { return JSON.parse(localStorage.getItem(storageKey(ymd)) || "[]"); }
-      catch { return []; }
-    }
-    function saveDayRaw(ymd, arr){
-      localStorage.setItem(storageKey(ymd), JSON.stringify(arr.slice(-5000)));
-    }
-    // zapis próbki (max co 2 s)
-    function savePowerSample(ts, p){
-      const ymd = localYMD(ts);
-      const arr = loadDayRaw(ymd);
-      if (arr.length && (new Date(arr[arr.length-1].t).getTime() > ts.getTime()-2000)) return;
-      arr.push({ t: ts.toISOString(), p: Math.round(p*10)/10 });
-      saveDayRaw(ymd, arr);
-    }
-
-    // agregacja do półgodzinnych kubełków (średnia)
-    function aggregateHalfHour(ymd){
-      const arr = loadDayRaw(ymd);
-      const buckets = Array.from({length: 48}, () => []);
-      for (const s of arr){
-        const d = new Date(s.t);
-        const h = d.getHours();
-        const idx = h*2 + (d.getMinutes() >= 30 ? 1 : 0);
-        buckets[idx].push(s.p);
+    // Wykres (pełna doba, PL HH:mm)
+    const ctx=document.getElementById("powerChart").getContext("2d");
+    const chart=new Chart(ctx,{
+      type:"line",
+      data:{datasets:[{label:"Moc (W)",data:[],borderWidth:2,pointRadius:2,spanGaps:true,tension:0}]},
+      options:{
+        parsing:false, responsive:true,
+        scales:{
+          x:{
+            type:"time",
+            time:{ unit:"hour", stepSize:1, displayFormats:{hour:"HH:mm",minute:"HH:mm"}, tooltipFormat:"HH:mm" },
+            ticks:{ callback:(v)=> new Intl.DateTimeFormat("pl-PL",{hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(v)) },
+            title:{ display:true, text:"Czas" }
+          },
+          y:{ beginAtZero:true, title:{ display:true, text:"Waty (W)" } }
+        },
+        plugins:{ legend:{display:false} },
+        interaction:{ intersect:false, mode:"nearest" }
       }
-      const out = [];
-      const base = new Date(`${ymd}T00:00:00`);
-      for (let i=0;i<48;i++){
-        const ts = new Date(base.getTime() + i*30*60*1000);
-        if (buckets[i].length){
-          const avg = buckets[i].reduce((a,b)=>a+b,0)/buckets[i].length;
-          out.push({ x: ts, y: Math.round(avg*10)/10 });
-        } else {
-          out.push({ x: ts, y: null }); // brak danych w bucketcie
-        }
+    });
+
+    function ymd(d){ return d.toISOString().slice(0,10); }
+    function savePower(ts,p){ const key="pow"+ymd(ts); const arr=JSON.parse(localStorage.getItem(key)||"[]"); arr.push({t:ts.toISOString(),p}); localStorage.setItem(key,JSON.stringify(arr)); }
+    function loadDay(day){ return JSON.parse(localStorage.getItem("pow"+day)||"[]"); }
+    function halfHourAvg(arr,day){
+      const out=[]; const base=new Date(day+"T00:00:00");
+      for(let i=0;i<48;i++){
+        const start=new Date(base.getTime()+i*30*60000);
+        const end=new Date(start.getTime()+30*60000);
+        const subset=arr.filter(r=>{ const t=new Date(r.t); return t>=start && t<end; });
+        if(subset.length){ const avg=subset.reduce((s,r)=>s+r.p,0)/subset.length; out.push({x:start,y:avg}); }
+        else { out.push({x:start,y:null}); }
       }
       return out;
     }
+    function refreshChartForDay(day){ chart.data.datasets[0].data=halfHourAvg(loadDay(day),day); chart.update(); }
+    function refreshChart(){ const d=dayPicker.value||ymd(new Date()); refreshChartForDay(d); }
 
-    /* ================== WYKRES ================== */
-    const ctx = document.getElementById('powerChart').getContext('2d');
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: { datasets: [{ label: 'Moc (W)', data: [], borderWidth: 2, pointRadius: 2, spanGaps: true, tension: 0 }] },
-      options: {
-        responsive: true,
-        parsing: false,
-        scales: {
-          x: { type: 'time', time: { unit: 'hour', stepSize: 1, tooltipFormat: 'HH:mm' }, title: { display: true, text: 'Czas' } },
-          y: { beginAtZero: true, title: { display: true, text: 'Waty (W)' } }
-        },
-        plugins: { legend: { display: false } },
-        interaction: { intersect: false, mode: 'nearest' }
-      }
-    });
+    const dayPicker=document.getElementById("dayPicker");
+    dayPicker.value=ymd(new Date());
+    dayPicker.onchange=()=>refreshChartForDay(dayPicker.value);
 
-    function refreshChartForDay(ymd){
-      const agg = aggregateHalfHour(ymd);
-      chart.data.datasets[0].data = agg;
-      chart.update();
-    }
-
-    const dayPicker = document.getElementById('dayPicker');
-    const todayStr = localYMD(new Date());
-    dayPicker.value = todayStr;
-    dayPicker.addEventListener('change', () => {
-      refreshChartForDay(dayPicker.value);
-    });
-
-    // start
-    refreshChartForDay(todayStr);
-    updateRotorSpeed(0);
-  </script>
+    refreshChart();
+  }
+</script>
 </body>
 </html>
