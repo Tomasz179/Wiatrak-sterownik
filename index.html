@@ -151,7 +151,18 @@
       blades.style.setProperty("--play", brakeState==="ON" ? "paused" : "running");
     }
 
-    // MQTT
+    // ====== POMOCNICZE: zakres dnia lokalnie (00:00–24:00) ======
+    function startOfDayLocal(dayStr){
+      const [y,m,d] = dayStr.split("-").map(Number);
+      return new Date(y, m-1, d, 0, 0, 0, 0);
+    }
+    function endOfDayLocal(dayStr){
+      const s = startOfDayLocal(dayStr);
+      return new Date(s.getTime() + 24*60*60*1000);
+    }
+    function ymd(d){ return d.toISOString().slice(0,10); }
+
+    // ====== MQTT ======
     const client=mqtt.connect(WS_URL,{clientId:"webdash_"+Math.random().toString(16).slice(2)});
     client.on("connect",()=>client.subscribe(`${PREFIX}/#`));
 
@@ -162,7 +173,14 @@
       const key=(ix>=0&&parts[ix+1])?parts[ix+1].toLowerCase():"";
 
       if(key.includes("wiatrak")&&key.includes("kwh")){ els.kwh.textContent=fmt1dec(parseNumber(val)); return; }
-      if(key.startsWith("moc")){ const p=parseNumber(val); els.power.textContent=fmt1dec(p); updateRotor(p); savePower(new Date(),p); refreshChart(); return; }
+      if(key.startsWith("moc")){
+        const p=parseNumber(val);
+        els.power.textContent=fmt1dec(p);
+        updateRotor(p);
+        savePower(new Date(),p);
+        refreshChart();
+        return;
+      }
       if(key.includes("procent")||key.includes("naladowania")){ els.soc.textContent=fmt1dec(parseNumber(val)); return; }
       if(key.startsWith("nap")){ els.bat_v.textContent=fmt1dec(parseNumber(val)); return; }
       if(key.startsWith("pr")){ els.bat_a.textContent=fmt1dec(parseNumber(val)); return; }
@@ -177,10 +195,10 @@
 
     els.btn.onclick=()=>{ const next=(brakeState==="ON")?"OFF":"ON"; client.publish(`${PREFIX}/switch/hamulec_turbiny/command`,next); };
 
-    // QR
+    // ====== QR ======
     new QRCode(document.getElementById("qrcode"),{text:"https://tomasz179.github.io/Wiatrak-sterownik/",width:200,height:200});
 
-    // Wykres (pełna doba, PL HH:mm)
+    // ====== Wykres (pełna doba 00:00–24:00, PL HH:mm) ======
     const ctx=document.getElementById("powerChart").getContext("2d");
     const chart=new Chart(ctx,{
       type:"line",
@@ -192,7 +210,8 @@
             type:"time",
             time:{ unit:"hour", stepSize:1, displayFormats:{hour:"HH:mm",minute:"HH:mm"}, tooltipFormat:"HH:mm" },
             ticks:{ callback:(v)=> new Intl.DateTimeFormat("pl-PL",{hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(v)) },
-            title:{ display:true, text:"Czas" }
+            title:{ display:true, text:"Czas" },
+            // min/max ustawimy dynamicznie w refreshChartForDay()
           },
           y:{ beginAtZero:true, title:{ display:true, text:"Waty (W)" } }
         },
@@ -201,27 +220,67 @@
       }
     });
 
-    function ymd(d){ return d.toISOString().slice(0,10); }
-    function savePower(ts,p){ const key="pow"+ymd(ts); const arr=JSON.parse(localStorage.getItem(key)||"[]"); arr.push({t:ts.toISOString(),p}); localStorage.setItem(key,JSON.stringify(arr)); }
-    function loadDay(day){ return JSON.parse(localStorage.getItem("pow"+day)||"[]"); }
-    function halfHourAvg(arr,day){
-      const out=[]; const base=new Date(day+"T00:00:00");
-      for(let i=0;i<48;i++){
-        const start=new Date(base.getTime()+i*30*60000);
-        const end=new Date(start.getTime()+30*60000);
-        const subset=arr.filter(r=>{ const t=new Date(r.t); return t>=start && t<end; });
-        if(subset.length){ const avg=subset.reduce((s,r)=>s+r.p,0)/subset.length; out.push({x:start,y:avg}); }
-        else { out.push({x:start,y:null}); }
+    // ====== ZAPIS/ODCZYT PRÓBEK (wsteczna zgodność) ======
+    // zapis: t jako ms od epoki
+    function savePower(ts, p){
+      const key = "pow" + ymd(ts);
+      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      arr.push({ t: ts.getTime(), p });
+      localStorage.setItem(key, JSON.stringify(arr));
+    }
+
+    // odczyt: wspiera stare wpisy (ISO) i nowe (ms)
+    function loadDay(day){
+      const raw = JSON.parse(localStorage.getItem("pow"+day) || "[]");
+      return raw.map(r => {
+        const tms = (typeof r.t === "number") ? r.t : Date.parse(r.t);
+        return { t: tms, p: r.p };
+      });
+    }
+
+    // ====== Agregacja co 30 min w zakresie 00:00–24:00 ======
+    function halfHourAvg(arr, day){
+      const out = [];
+      const base = startOfDayLocal(day);
+      for (let i = 0; i < 48; i++){
+        const start = new Date(base.getTime() + i * 30 * 60000);
+        const end   = new Date(start.getTime() + 30 * 60000);
+        const subset = arr.filter(r => {
+          const t = new Date(r.t);
+          return t >= start && t < end;
+        });
+        if (subset.length){
+          const avg = subset.reduce((s, r) => s + r.p, 0) / subset.length;
+          out.push({ x: start, y: avg });
+        } else {
+          out.push({ x: start, y: null });
+        }
       }
       return out;
     }
-    function refreshChartForDay(day){ chart.data.datasets[0].data=halfHourAvg(loadDay(day),day); chart.update(); }
-    function refreshChart(){ const d=dayPicker.value||ymd(new Date()); refreshChartForDay(d); }
 
+    function refreshChartForDay(day){
+      const data = halfHourAvg(loadDay(day), day);
+      chart.data.datasets[0].data = data;
+
+      // stałe granice osi X (00:00–24:00) dla wybranego dnia — w czasie lokalnym
+      chart.options.scales.x.min = startOfDayLocal(day);
+      chart.options.scales.x.max = endOfDayLocal(day);
+
+      chart.update();
+    }
+
+    function refreshChart(){
+      const d = dayPicker.value || ymd(new Date());
+      refreshChartForDay(d);
+    }
+
+    // ====== Kalendarz dnia ======
     const dayPicker=document.getElementById("dayPicker");
     dayPicker.value=ymd(new Date());
     dayPicker.onchange=()=>refreshChartForDay(dayPicker.value);
 
+    // Inicjalne odświeżenie
     refreshChart();
   }
 </script>
