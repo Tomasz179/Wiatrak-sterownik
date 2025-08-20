@@ -4,40 +4,48 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sterownik Wiatrowy – MQTT</title>
+
+  <!-- Biblioteki -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+
   <style>
-    body { font-family: Arial, sans-serif; background:#f4f4f4; padding:20px; }
+    :root{ --card-w:1100px; }
+    body { font-family: Arial, sans-serif; background:#f6f7fb; padding:20px; color:#111; }
 
     /* BLOKADA HASŁA */
     #lock { position:fixed; inset:0; background:#0b0f1a; display:flex; align-items:center; justify-content:center; z-index:9999; }
-    #lock .box { background:#fff; padding:20px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); width:320px; text-align:center; }
-    #lock h3 { margin:0 0 10px; }
-    #lock input { width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; margin-bottom:10px; }
-    #lock button { width:100%; padding:10px; border:none; border-radius:8px; background:#0d6efd; color:#fff; font-size:15px; cursor:pointer; }
-    #lock p { color:#c00; min-height:1em; font-size:13px; }
+    #lock .box { background:#fff; padding:20px; border-radius:12px; box-shadow:0 3px 12px rgba(0,0,0,.15); width:320px; text-align:center; }
+    #lock input { width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; margin:10px 0; }
+    #lock button { width:100%; padding:10px; border:none; border-radius:8px; background:#0d6efd; color:#fff; }
+    #lock p { color:#c00; min-height:1.2em; font-size:13px; }
 
     h1 { text-align:center; margin:8px 0 14px; }
-    .card { background:white; padding:15px; margin:10px auto; border-radius:10px; max-width:420px; box-shadow:0 2px 5px rgba(0,0,0,0.2); }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; max-width:var(--card-w); margin:0 auto; }
+    .card { background:white; padding:15px; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.07); }
     .label { font-weight:bold; }
     .value { float:right; font-weight:700; }
     .unit { margin-left:4px; color:#666; font-weight:500 }
-    button { padding:10px 16px; margin-top:10px; border:none; border-radius:6px; background:#0d6efd; color:white; font-size:15px; cursor:pointer; }
+    button { padding:10px 16px; margin-top:10px; border:none; border-radius:8px; background:#0d6efd; color:white; cursor:pointer; }
     button.off { background:#dc3545; }
 
     /* Wiatrak */
+    .wind-wrap{max-width:var(--card-w); margin:0 auto;}
     .wind-svg { display:block; margin:0 auto 6px; width:240px; height:auto; }
     .blades { transform-origin: 32px 24px; animation: spin var(--dur, 4s) linear infinite; animation-play-state: var(--play, running); }
     @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
 
     /* Wykres */
-    .chart-card { padding:15px; background:#fff; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.2); margin-top:14px; max-width:900px; margin-left:auto; margin-right:auto; }
+    .chart-card { padding:15px; background:#fff; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.07); margin-top:14px; max-width:var(--card-w); margin-left:auto; margin-right:auto; }
     .chart-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
-    .chart-toolbar input[type="date"] { padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
     .muted { color:#666; font-size:13px; }
-    #qrcode { margin:26px auto; width:fit-content; }
+    #qrcode { margin:18px auto; width:fit-content; }
+
+    /* Pasek statusu */
+    #status { max-width:var(--card-w); margin:0.5rem auto; font-size:12px; color:#333; }
+    #status b { font-weight:700; }
   </style>
 </head>
 <body>
@@ -53,32 +61,83 @@
 
   <!-- APLIKACJA -->
   <div id="app" style="display:none;">
-
-    <!-- Wiatrak -->
-    <svg class="wind-svg" viewBox="0 0 64 64">
-      <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
-      <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
-      <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
-      <g class="blades" id="blades">
-        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
-        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
-        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
-      </g>
-    </svg>
+    <div class="wind-wrap">
+      <svg class="wind-svg" viewBox="0 0 64 64">
+        <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
+        <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
+        <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
+        <g class="blades" id="blades">
+          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
+          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
+          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
+        </g>
+      </svg>
+    </div>
 
     <h1>🌬️ Sterownik Wiatrowy</h1>
+    <div id="status">Status MQTT: <b id="mqttStatus">inicjalizacja…</b></div>
 
-    <!-- Sensory -->
-    <div class="card"><span class="label">Wiatrak (energia)</span> <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span></div>
-    <div class="card"><span class="label">Moc ładowania</span> <span class="value"><span id="power">—</span><span class="unit">W</span></span></div>
-    <div class="card"><span class="label">Naładowanie baterii</span> <span class="value"><span id="soc">—</span><span class="unit">%</span></span></div>
-    <div class="card"><span class="label">Napięcie baterii</span> <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
-    <div class="card"><span class="label">Prąd ładowania</span> <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
+    <div class="grid">
+      <!-- Sensory -->
+      <div class="card"><span class="label">Wiatrak (energia)</span> <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span></div>
+      <div class="card"><span class="label">Moc ładowania</span> <span class="value"><span id="power">—</span><span class="unit">W</span></span></div>
+      <div class="card"><span class="label">Naładowanie baterii</span> <span class="value"><span id="soc">—</span><span class="unit">%</span></span></div>
+      <div class="card"><span class="label">Napięcie baterii</span> <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
+      <div class="card"><span class="label">Prąd ładowania</span> <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
 
-    <div class="card">
-      <span class="label">Hamulec turbiny</span>
-      <span class="value" id="brake">—</span><br><br>
-      <button id="btnBrake">Przełącz hamulec</button>
+      <!-- Hamulec -->
+      <div class="card">
+        <span class="label">Hamulec turbiny</span>
+        <span class="value" id="brake">—</span><br><br>
+        <button id="btnBrake">Przełącz hamulec</button>
+      </div>
+
+      <!-- Wyjście LOAD -->
+      <div class="card">
+        <span class="label">Wyjście LOAD</span>
+        <span class="value" id="loadState">—</span><br><br>
+        <button id="btnLoad">Przełącz LOAD</button>
+      </div>
+
+      <!-- Tryb napięcia systemu -->
+      <div class="card">
+        <div class="label">Tryb napięcia systemu</div>
+        <div class="row" style="margin-top:8px;">
+          <select id="selSysMode">
+            <option value="Auto">Auto</option>
+            <option value="24V">24V</option>
+            <option value="48V">48V</option>
+          </select>
+          <button id="btnSysMode">Zapisz</button>
+        </div>
+        <div class="muted" id="sysModeInfo" style="margin-top:6px;">—</div>
+      </div>
+
+      <!-- Typ baterii -->
+      <div class="card">
+        <div class="label">Typ baterii</div>
+        <div class="row" style="margin-top:8px;">
+          <select id="selBattType">
+            <option value="B0">B0</option>
+            <option value="B1">B1</option>
+            <option value="B2">B2</option>
+            <option value="B3">B3</option>
+            <option value="B4">B4</option>
+          </select>
+          <button id="btnBattType">Zapisz</button>
+        </div>
+        <div class="muted" id="battTypeInfo" style="margin-top:6px;">—</div>
+      </div>
+
+      <!-- Battery Full Voltage -->
+      <div class="card">
+        <div class="label">Battery Full Voltage</div>
+        <div class="row" style="margin-top:8px;">
+          <input id="numBfv" type="number" min="20" max="72" step="0.1" />
+          <button id="btnBfv">Zapisz</button>
+        </div>
+        <div class="muted" id="bfvInfo" style="margin-top:6px;">—</div>
+      </div>
     </div>
 
     <!-- Wykres -->
@@ -88,201 +147,211 @@
         <span class="muted">• wybierz dzień:</span>
         <input type="date" id="dayPicker">
       </div>
-      <canvas id="powerChart" height="220"></canvas>
+      <canvas id="powerChart" height="240"></canvas>
       <div class="muted" style="margin-top:6px;">Dane zapisywane lokalnie w przeglądarce. Oś czasu: 00:00–24:00 (HH:mm).</div>
     </div>
 
     <div id="qrcode"></div>
   </div>
 
+<!-- ====== HASŁO ====== -->
 <script>
-  /* ====== HASŁO ====== */
-  const PASSWORD = "tomek1425"; // zmień na swoje
+document.addEventListener('DOMContentLoaded', function () {
+  const PASSWORD = "tomek1425";   /* ← zmień jeśli chcesz */
+  const lock = document.getElementById('lock');
+  const app  = document.getElementById('app');
+  const pwd  = document.getElementById('pwd');
+  const msg  = document.getElementById('lockMsg');
+  const btn  = document.getElementById('unlockBtn');
 
-  function getParam(name){
-    const m = new RegExp('[?&]'+name+'=([^&]+)').exec(location.search);
-    return m ? decodeURIComponent(m[1].replace(/\+/g,' ')) : null;
+  function doUnlock() {
+    const ok = (String(pwd.value || '').trim() === String(PASSWORD).trim());
+    if (ok) { lock.style.display='none'; app.style.display='block'; try{ initApp(); }catch(e){ console.error(e); } }
+    else { msg.textContent='❌ Złe hasło'; }
+  }
+  btn.addEventListener('click', doUnlock);
+  pwd.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
+
+  const pass = new URLSearchParams(location.search).get('pass');
+  if (pass) { pwd.value = pass; doUnlock(); }
+});
+</script>
+
+<!-- ====== APLIKACJA ====== -->
+<script>
+function initApp(){
+  const PREFIX = "sterownik_wiatrowy";
+
+  /* Użyj publicznego HiveMQ po WSS (działa z przeglądarki) */
+  const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
+
+  function parseNumber(val){ const m=String(val).match(/-?\d+(?:[.,]\d+)?/); return m?parseFloat(m[0].replace(',', '.')):NaN; }
+  function fmt1dec(n){ if(isNaN(n)) return "—"; return (Math.round(n*10)/10).toFixed(1).replace('.',','); }
+
+  const els={
+    kwh:document.getElementById('kwh'),
+    power:document.getElementById('power'),
+    soc:document.getElementById('soc'),
+    bat_v:document.getElementById('bat_v'),
+    bat_a:document.getElementById('bat_a'),
+    brake:document.getElementById('brake'),
+    btnBrake:document.getElementById('btnBrake'),
+    loadState:document.getElementById('loadState'),
+    btnLoad:document.getElementById('btnLoad'),
+    selSysMode:document.getElementById('selSysMode'),
+    btnSysMode:document.getElementById('btnSysMode'),
+    sysModeInfo:document.getElementById('sysModeInfo'),
+    selBattType:document.getElementById('selBattType'),
+    btnBattType:document.getElementById('btnBattType'),
+    battTypeInfo:document.getElementById('battTypeInfo'),
+    numBfv:document.getElementById('numBfv'),
+    btnBfv:document.getElementById('btnBfv'),
+    bfvInfo:document.getElementById('bfvInfo'),
+    mqttStatus:document.getElementById('mqttStatus'),
+  };
+
+  const blades=document.getElementById('blades');
+  let brakeState='OFF', loadState='OFF';
+
+  function updateRotor(power){
+    const p=Math.max(0,Math.min(3000,Number(power)||0));
+    const dur=8-(p/3000)*(8-1.5);
+    blades.style.setProperty('--dur',dur.toFixed(2)+'s');
+    blades.style.setProperty('--play', brakeState==='ON' ? 'paused' : 'running');
   }
 
-  function unlockWith(value){
-    const given = String(value || '').trim();
-    const ok = (given === String(PASSWORD).trim());
-    if (ok){
-      document.getElementById("lock").style.display="none";
-      document.getElementById("app").style.display="block";
-      initApp();
-    } else {
-      document.getElementById("lockMsg").textContent="❌ Złe hasło";
+  /* ====== WIELO-WARIANTOWE TOPICI (single / double / triple "_") ====== */
+  const TOPICS = {
+    // SENSORY
+    kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
+    power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
+    soc:   [`${PREFIX}/sensor/procent_na__adowania_baterii/state`, `${PREFIX}/sensor/procent_na_adowania_baterii/state`],
+    bat_v: [`${PREFIX}/sensor/napi_cie_baterii/state`, `${PREFIX}/sensor/napi__cie_baterii/state`],
+    bat_a: [`${PREFIX}/sensor/pr_d__adowania/state`, `${PREFIX}/sensor/pr__d___adowania/state`],
+
+    // SWITCH – hamulec
+    brake_state: [`${PREFIX}/switch/hamulec_turbiny/state`],
+    brake_cmd:   [`${PREFIX}/switch/hamulec_turbiny/command`],
+
+    // SWITCH – LOAD (obie pisownie)
+    load_state:  [`${PREFIX}/switch/wyjscie_load/state`, `${PREFIX}/switch/wyj__cie_load/state`],
+    load_cmd:    [`${PREFIX}/switch/wyjscie_load/command`, `${PREFIX}/switch/wyj__cie_load/command`],
+
+    // SELECT / NUMBER (również 2 warianty dla „napięcia”)
+    sysmode_state: [`${PREFIX}/select/tryb_napi_cia_systemu/state`, `${PREFIX}/select/tryb_napi__cia_systemu/state`],
+    sysmode_cmd:   [`${PREFIX}/select/tryb_napi_cia_systemu/command`, `${PREFIX}/select/tryb_napi__cia_systemu/command`],
+    batt_type_state: [`${PREFIX}/select/typ_baterii/state`],
+    batt_type_cmd:   [`${PREFIX}/select/typ_baterii/command`],
+    bfv_state: [`${PREFIX}/number/battery_full_voltage/state`],
+    bfv_cmd:   [`${PREFIX}/number/battery_full_voltage/command`],
+  };
+  const matchTopic = (incoming, candidates) => (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
+
+  /* ====== Wykres (lokalny log mocy) ====== */
+  const ctx=document.getElementById('powerChart').getContext('2d');
+  const chart=new Chart(ctx,{
+    type:'line',
+    data:{datasets:[{label:'Moc (W)',data:[],borderWidth:2,pointRadius:2,spanGaps:true,tension:0}]},
+    options:{ parsing:false, responsive:true,
+      scales:{ x:{ type:'time', time:{ unit:'hour', stepSize:1, displayFormats:{hour:'HH:mm',minute:'HH:mm'}, tooltipFormat:'HH:mm' },
+                  ticks:{ callback:(v)=> new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(v)) },
+                  title:{ display:true, text:'Czas' } },
+               y:{ beginAtZero:true, title:{ display:true, text:'Waty (W)' } }},
+      plugins:{ legend:{display:false} },
+      interaction:{ intersect:false, mode:'nearest' }
     }
-    return ok;
+  });
+  function ymd(d){ return d.toISOString().slice(0,10); }
+  function startOfDayLocal(dayStr){ const [y,m,d]=dayStr.split('-').map(Number); return new Date(y,m-1,d,0,0,0,0); }
+  function endOfDayLocal(dayStr){ const s=startOfDayLocal(dayStr); return new Date(s.getTime()+24*60*60*1000); }
+  function savePower(ts,p){ const key='pow'+ymd(ts); const arr=JSON.parse(localStorage.getItem(key)||'[]'); arr.push({t:ts.getTime(),p}); localStorage.setItem(key, JSON.stringify(arr)); }
+  function loadDay(day){ const raw=JSON.parse(localStorage.getItem('pow'+day)||'[]'); return raw.map(r=>({t:(typeof r.t==='number')?r.t:Date.parse(r.t), p:r.p})); }
+  function halfHourAvg(arr, day){
+    const out=[]; const base=startOfDayLocal(day);
+    for(let i=0;i<48;i++){
+      const start=new Date(base.getTime()+i*30*60000); const end=new Date(start.getTime()+30*60000);
+      const subset=arr.filter(r=>{ const t=new Date(r.t); return t>=start&&t<end; });
+      out.push(subset.length?{x:start,y:subset.reduce((s,r)=>s+r.p,0)/subset.length}:{x:start,y:null});
+    }
+    return out;
   }
+  function refreshChartForDay(day){
+    const data=halfHourAvg(loadDay(day), day);
+    chart.data.datasets[0].data=data;
+    chart.options.scales.x.min=startOfDayLocal(day);
+    chart.options.scales.x.max=endOfDayLocal(day);
+    chart.update();
+  }
+  const dayPicker=document.getElementById('dayPicker');
+  dayPicker.value = new Date().toISOString().slice(0,10);
+  dayPicker.onchange=()=>refreshChartForDay(dayPicker.value);
 
-  document.getElementById("unlockBtn").onclick = ()=> unlockWith(document.getElementById("pwd").value);
-  document.getElementById("pwd").onkeydown = e=>{ if(e.key==="Enter") unlockWith(document.getElementById("pwd").value); };
-
-  // URL ?pass=1234
-  const passParam = getParam('pass'); if (passParam) unlockWith(passParam);
-
-  /* ====== APLIKACJA ====== */
-  function initApp(){
-    const PREFIX="sterownik_wiatrowy";
-    const WS_URL="wss://broker.hivemq.com:8884/mqtt";
-
-    function parseNumber(val){ const m=String(val).match(/-?\d+(?:[.,]\d+)?/); return m?parseFloat(m[0].replace(',','.')):NaN; }
-    function fmt1dec(n){ if(isNaN(n)) return "—"; return (Math.round(n*10)/10).toFixed(1).replace(".",","); }
-
-    const els={
-      kwh:document.getElementById("kwh"),
-      power:document.getElementById("power"),
-      soc:document.getElementById("soc"),
-      bat_v:document.getElementById("bat_v"),
-      bat_a:document.getElementById("bat_a"),
-      brake:document.getElementById("brake"),
-      btn:document.getElementById("btnBrake")
-    };
-
-    let brakeState="OFF";
-    const blades=document.getElementById("blades");
-
-    function updateRotor(power){
-      const p=Math.max(0,Math.min(3000,Number(power)||0));
-      const dur=8-(p/3000)*(8-1.5);
-      blades.style.setProperty("--dur",dur.toFixed(2)+"s");
-      blades.style.setProperty("--play", brakeState==="ON" ? "paused" : "running");
-    }
-
-    // ====== POMOCNICZE: zakres dnia lokalnie (00:00–24:00) ======
-    function startOfDayLocal(dayStr){
-      const [y,m,d] = dayStr.split("-").map(Number);
-      return new Date(y, m-1, d, 0, 0, 0, 0);
-    }
-    function endOfDayLocal(dayStr){
-      const s = startOfDayLocal(dayStr);
-      return new Date(s.getTime() + 24*60*60*1000);
-    }
-    function ymd(d){ return d.toISOString().slice(0,10); }
-
-    // ====== MQTT ======
-    const client=mqtt.connect(WS_URL,{clientId:"webdash_"+Math.random().toString(16).slice(2)});
-    client.on("connect",()=>client.subscribe(`${PREFIX}/#`));
-
-    client.on("message",(topic,payload)=>{
-      const val=payload.toString();
-      const parts=topic.split("/");
-      const ix=parts.indexOf("sensor")>=0?parts.indexOf("sensor"):parts.indexOf("switch");
-      const key=(ix>=0&&parts[ix+1])?parts[ix+1].toLowerCase():"";
-
-      if(key.includes("wiatrak")&&key.includes("kwh")){ els.kwh.textContent=fmt1dec(parseNumber(val)); return; }
-      if(key.startsWith("moc")){
-        const p=parseNumber(val);
-        els.power.textContent=fmt1dec(p);
-        updateRotor(p);
-        savePower(new Date(),p);
-        refreshChart();
-        return;
-      }
-      if(key.includes("procent")||key.includes("naladowania")){ els.soc.textContent=fmt1dec(parseNumber(val)); return; }
-      if(key.startsWith("nap")){ els.bat_v.textContent=fmt1dec(parseNumber(val)); return; }
-      if(key.startsWith("pr")){ els.bat_a.textContent=fmt1dec(parseNumber(val)); return; }
-      if(key.includes("hamulec")){
-        brakeState=String(val).trim().toUpperCase();
-        els.brake.textContent=(brakeState==="ON")?"Włączony":"Wyłączony";
-        els.btn.textContent=(brakeState==="ON")?"Wyłącz hamulec":"Włącz hamulec";
-        els.btn.className=(brakeState==="ON")?"off":"";
-        updateRotor(parseNumber(els.power.textContent.replace(",",".")));
-      }
+  /* ====== MQTT ====== */
+  const client=mqtt.connect(WS_URL,{clientId:'webdash_'+Math.random().toString(16).slice(2)});
+  client.on('connect',()=>{
+    els.mqttStatus.textContent='połączono';
+    // subskrybuj wszystkie warianty /state
+    Object.values(TOPICS).flat().forEach(tp=>{
+      const arr = Array.isArray(tp) ? tp : [tp];
+      arr.forEach(t => { if (t.endsWith('/state')) client.subscribe(t); });
     });
+  });
+  client.on('reconnect',()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
+  client.on('close',()=>{ els.mqttStatus.textContent='rozłączono'; });
+  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT (konsola)'; console.error('MQTT error:', e); });
 
-    els.btn.onclick=()=>{ const next=(brakeState==="ON")?"OFF":"ON"; client.publish(`${PREFIX}/switch/hamulec_turbiny/command`,next); };
+  client.on('message',(topic,payload)=>{
+    const val = payload.toString();
+    const n = (x)=>{ const m=String(x).match(/-?\d+(?:[.,]\d+)?/); return m?parseFloat(m[0].replace(',','.')):NaN; };
 
-    // ====== QR ======
-    new QRCode(document.getElementById("qrcode"),{text:"https://tomasz179.github.io/Wiatrak-sterownik/",width:200,height:200});
+    // SENSORY
+    if (matchTopic(topic, TOPICS.kwh))   { const v=n(val); els.kwh.textContent  = isNaN(v)?val:fmt1dec(v); return; }
+    if (matchTopic(topic, TOPICS.power)) { const v=n(val); els.power.textContent= isNaN(v)?val:fmt1dec(v); updateRotor(v); savePower(new Date(), isNaN(v)?0:v); refreshChartForDay(dayPicker.value); return; }
+    if (matchTopic(topic, TOPICS.soc))   { const v=n(val); els.soc.textContent  = isNaN(v)?val:fmt1dec(v); return; }
+    if (matchTopic(topic, TOPICS.bat_v)) { const v=n(val); els.bat_v.textContent= isNaN(v)?val:fmt1dec(v); return; }
+    if (matchTopic(topic, TOPICS.bat_a)) { const v=n(val); els.bat_a.textContent= isNaN(v)?val:fmt1dec(v); return; }
 
-    // ====== Wykres (pełna doba 00:00–24:00, PL HH:mm) ======
-    const ctx=document.getElementById("powerChart").getContext("2d");
-    const chart=new Chart(ctx,{
-      type:"line",
-      data:{datasets:[{label:"Moc (W)",data:[],borderWidth:2,pointRadius:2,spanGaps:true,tension:0}]},
-      options:{
-        parsing:false, responsive:true,
-        scales:{
-          x:{
-            type:"time",
-            time:{ unit:"hour", stepSize:1, displayFormats:{hour:"HH:mm",minute:"HH:mm"}, tooltipFormat:"HH:mm" },
-            ticks:{ callback:(v)=> new Intl.DateTimeFormat("pl-PL",{hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(v)) },
-            title:{ display:true, text:"Czas" },
-            // min/max ustawimy dynamicznie w refreshChartForDay()
-          },
-          y:{ beginAtZero:true, title:{ display:true, text:"Waty (W)" } }
-        },
-        plugins:{ legend:{display:false} },
-        interaction:{ intersect:false, mode:"nearest" }
-      }
-    });
-
-    // ====== ZAPIS/ODCZYT PRÓBEK (wsteczna zgodność) ======
-    // zapis: t jako ms od epoki
-    function savePower(ts, p){
-      const key = "pow" + ymd(ts);
-      const arr = JSON.parse(localStorage.getItem(key) || "[]");
-      arr.push({ t: ts.getTime(), p });
-      localStorage.setItem(key, JSON.stringify(arr));
+    // SWITCH – hamulec
+    if (matchTopic(topic, TOPICS.brake_state)){
+      const s=String(val).trim().toUpperCase();
+      brakeState=s; els.brake.textContent=(s==='ON')?'Włączony':'Wyłączony';
+      els.btnBrake.textContent=(s==='ON')?'Wyłącz hamulec':'Włącz hamulec';
+      els.btnBrake.className=(s==='ON')?'off':'';
+      updateRotor(n(els.power.textContent.replace(',','.')));
+      return;
+    }
+    // SWITCH – LOAD
+    if (matchTopic(topic, TOPICS.load_state)){
+      const s=String(val).trim().toUpperCase();
+      loadState=s; els.loadState.textContent=(s==='ON')?'Włączone':'Wyłączone';
+      els.btnLoad.textContent=(s==='ON')?'Wyłącz LOAD':'Włącz LOAD';
+      els.btnLoad.className=(s==='ON')?'off':'';
+      return;
     }
 
-    // odczyt: wspiera stare wpisy (ISO) i nowe (ms)
-    function loadDay(day){
-      const raw = JSON.parse(localStorage.getItem("pow"+day) || "[]");
-      return raw.map(r => {
-        const tms = (typeof r.t === "number") ? r.t : Date.parse(r.t);
-        return { t: tms, p: r.p };
-      });
-    }
+    // SELECT / NUMBER
+    if (matchTopic(topic, TOPICS.sysmode_state)){ const opt=String(val).trim(); els.selSysMode.value=opt; els.sysModeInfo.textContent=`Bieżący tryb: ${opt}`; return; }
+    if (matchTopic(topic, TOPICS.batt_type_state)){ const opt=String(val).trim(); els.selBattType.value=opt; els.battTypeInfo.textContent=`Bieżący typ: ${opt}`; return; }
+    if (matchTopic(topic, TOPICS.bfv_state)){ const v=n(val); if(!isNaN(v)) els.numBfv.value=v.toFixed(1); els.bfvInfo.textContent=`Bieżąca wartość: ${isNaN(v)?'—':v.toFixed(1)+' V'}`; return; }
+  });
 
-    // ====== Agregacja co 30 min w zakresie 00:00–24:00 ======
-    function halfHourAvg(arr, day){
-      const out = [];
-      const base = startOfDayLocal(day);
-      for (let i = 0; i < 48; i++){
-        const start = new Date(base.getTime() + i * 30 * 60000);
-        const end   = new Date(start.getTime() + 30 * 60000);
-        const subset = arr.filter(r => {
-          const t = new Date(r.t);
-          return t >= start && t < end;
-        });
-        if (subset.length){
-          const avg = subset.reduce((s, r) => s + r.p, 0) / subset.length;
-          out.push({ x: start, y: avg });
-        } else {
-          out.push({ x: start, y: null });
-        }
-      }
-      return out;
-    }
+  /* ====== Publikacje – wysyłamy na WSZYSTKIE warianty ====== */
+  els.btnBrake.onclick = () => {
+    const next=(brakeState==='ON')?'OFF':'ON';
+    (TOPICS.brake_cmd).forEach(tp=>client.publish(tp, next));
+  };
+  els.btnLoad.onclick  = () => {
+    const next=(loadState==='ON')?'OFF':'ON';
+    (TOPICS.load_cmd).forEach(tp=>client.publish(tp, next));
+  };
+  els.btnSysMode.onclick  = () => { (TOPICS.sysmode_cmd).forEach(tp=>client.publish(tp, els.selSysMode.value)); };
+  els.btnBattType.onclick = () => { (TOPICS.batt_type_cmd).forEach(tp=>client.publish(tp, els.selBattType.value)); };
+  els.btnBfv.onclick      = () => { const x=parseNumber(els.numBfv.value); if(!isNaN(x)) (TOPICS.bfv_cmd).forEach(tp=>client.publish(tp, String(x))); };
 
-    function refreshChartForDay(day){
-      const data = halfHourAvg(loadDay(day), day);
-      chart.data.datasets[0].data = data;
-
-      // stałe granice osi X (00:00–24:00) dla wybranego dnia — w czasie lokalnym
-      chart.options.scales.x.min = startOfDayLocal(day);
-      chart.options.scales.x.max = endOfDayLocal(day);
-
-      chart.update();
-    }
-
-    function refreshChart(){
-      const d = dayPicker.value || ymd(new Date());
-      refreshChartForDay(d);
-    }
-
-    // ====== Kalendarz dnia ======
-    const dayPicker=document.getElementById("dayPicker");
-    dayPicker.value=ymd(new Date());
-    dayPicker.onchange=()=>refreshChartForDay(dayPicker.value);
-
-    // Inicjalne odświeżenie
-    refreshChart();
-  }
+  // QR + start wykresu
+  new QRCode(document.getElementById('qrcode'),{text:'https://tomasz179.github.io/Wiatrak-sterownik/',width:200,height:200});
+  refreshChartForDay(dayPicker.value);
+}
 </script>
 </body>
 </html>
