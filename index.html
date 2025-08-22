@@ -3,13 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sterownik Wiatrowy – MQTT</title>
+  <title>Sterownik Wiatrowy – MQTT (bez wykresu)</title>
 
-  <!-- Biblioteki -->
+  <!-- Biblioteki (usunięto Chart.js i adapter) -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
 
   <style>
     :root{ --card-w:1100px; }
@@ -37,15 +35,12 @@
     .blades { transform-origin: 32px 24px; animation: spin var(--dur, 4s) linear infinite; animation-play-state: var(--play, running); }
     @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
 
-    /* Wykres */
-    .chart-card { padding:15px; background:#fff; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.07); margin-top:14px; max-width:var(--card-w); margin-left:auto; margin-right:auto; }
-    .chart-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
-    .muted { color:#666; font-size:13px; }
-    #qrcode { margin:18px auto; width:fit-content; }
-
     /* Pasek statusu */
     #status { max-width:var(--card-w); margin:0.5rem auto; font-size:12px; color:#333; }
     #status b { font-weight:700; }
+
+    /* QR */
+    #qrcode { margin:18px auto; width:fit-content; }
   </style>
 </head>
 <body>
@@ -140,16 +135,7 @@
       </div>
     </div>
 
-    <!-- Wykres -->
-    <div class="chart-card">
-      <div class="chart-toolbar">
-        <strong>📊 Wykres mocy (co 30 min)</strong>
-        <span class="muted">• wybierz dzień:</span>
-        <input type="date" id="dayPicker">
-      </div>
-      <canvas id="powerChart" height="240"></canvas>
-      <div class="muted" style="margin-top:6px;">Dane zapisywane lokalnie w przeglądarce. Oś czasu: 00:00–24:00 (HH:mm).</div>
-    </div>
+    <!-- Usunięto sekcję wykresu -->
 
     <div id="qrcode"></div>
   </div>
@@ -247,45 +233,6 @@ function initApp(){
   };
   const matchTopic = (incoming, candidates) => (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
 
-  /* ====== Wykres (lokalny log mocy) ====== */
-  const ctx=document.getElementById('powerChart').getContext('2d');
-  const chart=new Chart(ctx,{
-    type:'line',
-    data:{datasets:[{label:'Moc (W)',data:[],borderWidth:2,pointRadius:2,spanGaps:true,tension:0}]},
-    options:{ parsing:false, responsive:true,
-      scales:{ x:{ type:'time', time:{ unit:'hour', stepSize:1, displayFormats:{hour:'HH:mm',minute:'HH:mm'}, tooltipFormat:'HH:mm' },
-                  ticks:{ callback:(v)=> new Intl.DateTimeFormat('pl-PL',{hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(v)) },
-                  title:{ display:true, text:'Czas' } },
-               y:{ beginAtZero:true, title:{ display:true, text:'Waty (W)' } }},
-      plugins:{ legend:{display:false} },
-      interaction:{ intersect:false, mode:'nearest' }
-    }
-  });
-  function ymd(d){ return d.toISOString().slice(0,10); }
-  function startOfDayLocal(dayStr){ const [y,m,d]=dayStr.split('-').map(Number); return new Date(y,m-1,d,0,0,0,0); }
-  function endOfDayLocal(dayStr){ const s=startOfDayLocal(dayStr); return new Date(s.getTime()+24*60*60*1000); }
-  function savePower(ts,p){ const key='pow'+ymd(ts); const arr=JSON.parse(localStorage.getItem(key)||'[]'); arr.push({t:ts.getTime(),p}); localStorage.setItem(key, JSON.stringify(arr)); }
-  function loadDay(day){ const raw=JSON.parse(localStorage.getItem('pow'+day)||'[]'); return raw.map(r=>({t:(typeof r.t==='number')?r.t:Date.parse(r.t), p:r.p})); }
-  function halfHourAvg(arr, day){
-    const out=[]; const base=startOfDayLocal(day);
-    for(let i=0;i<48;i++){
-      const start=new Date(base.getTime()+i*30*60000); const end=new Date(start.getTime()+30*60000);
-      const subset=arr.filter(r=>{ const t=new Date(r.t); return t>=start&&t<end; });
-      out.push(subset.length?{x:start,y:subset.reduce((s,r)=>s+r.p,0)/subset.length}:{x:start,y:null});
-    }
-    return out;
-  }
-  function refreshChartForDay(day){
-    const data=halfHourAvg(loadDay(day), day);
-    chart.data.datasets[0].data=data;
-    chart.options.scales.x.min=startOfDayLocal(day);
-    chart.options.scales.x.max=endOfDayLocal(day);
-    chart.update();
-  }
-  const dayPicker=document.getElementById('dayPicker');
-  dayPicker.value = new Date().toISOString().slice(0,10);
-  dayPicker.onchange=()=>refreshChartForDay(dayPicker.value);
-
   /* ====== MQTT ====== */
   const client=mqtt.connect(WS_URL,{clientId:'webdash_'+Math.random().toString(16).slice(2)});
   client.on('connect',()=>{
@@ -306,7 +253,7 @@ function initApp(){
 
     // SENSORY
     if (matchTopic(topic, TOPICS.kwh))   { const v=n(val); els.kwh.textContent  = isNaN(v)?val:fmt1dec(v); return; }
-    if (matchTopic(topic, TOPICS.power)) { const v=n(val); els.power.textContent= isNaN(v)?val:fmt1dec(v); updateRotor(v); savePower(new Date(), isNaN(v)?0:v); refreshChartForDay(dayPicker.value); return; }
+    if (matchTopic(topic, TOPICS.power)) { const v=n(val); els.power.textContent= isNaN(v)?val:fmt1dec(v); updateRotor(v); return; }
     if (matchTopic(topic, TOPICS.soc))   { const v=n(val); els.soc.textContent  = isNaN(v)?val:fmt1dec(v); return; }
     if (matchTopic(topic, TOPICS.bat_v)) { const v=n(val); els.bat_v.textContent= isNaN(v)?val:fmt1dec(v); return; }
     if (matchTopic(topic, TOPICS.bat_a)) { const v=n(val); els.bat_a.textContent= isNaN(v)?val:fmt1dec(v); return; }
@@ -348,9 +295,8 @@ function initApp(){
   els.btnBattType.onclick = () => { (TOPICS.batt_type_cmd).forEach(tp=>client.publish(tp, els.selBattType.value)); };
   els.btnBfv.onclick      = () => { const x=parseNumber(els.numBfv.value); if(!isNaN(x)) (TOPICS.bfv_cmd).forEach(tp=>client.publish(tp, String(x))); };
 
-  // QR + start wykresu
+  // QR
   new QRCode(document.getElementById('qrcode'),{text:'https://tomasz179.github.io/Wiatrak-sterownik/',width:200,height:200});
-  refreshChartForDay(dayPicker.value);
 }
 </script>
 </body>
