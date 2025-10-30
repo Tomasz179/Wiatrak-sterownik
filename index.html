@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sterownik Wiatrowy – MQTT (bez wykresu)</title>
+  <title>Sterownik Wiatrowy – MQTT (bez haseł i przycisków)</title>
 
-  <!-- Biblioteki (usunięto Chart.js i adapter) -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
@@ -13,21 +12,12 @@
     :root{ --card-w:1100px; }
     body { font-family: Arial, sans-serif; background:#f6f7fb; padding:20px; color:#111; }
 
-    /* BLOKADA HASŁA */
-    #lock { position:fixed; inset:0; background:#0b0f1a; display:flex; align-items:center; justify-content:center; z-index:9999; }
-    #lock .box { background:#fff; padding:20px; border-radius:12px; box-shadow:0 3px 12px rgba(0,0,0,.15); width:320px; text-align:center; }
-    #lock input { width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; margin:10px 0; }
-    #lock button { width:100%; padding:10px; border:none; border-radius:8px; background:#0d6efd; color:#fff; }
-    #lock p { color:#c00; min-height:1.2em; font-size:13px; }
-
     h1 { text-align:center; margin:8px 0 14px; }
     .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; max-width:var(--card-w); margin:0 auto; }
     .card { background:white; padding:15px; border-radius:12px; box-shadow:0 3px 10px rgba(0,0,0,0.07); }
     .label { font-weight:bold; }
     .value { float:right; font-weight:700; }
     .unit { margin-left:4px; color:#666; font-weight:500 }
-    button { padding:10px 16px; margin-top:10px; border:none; border-radius:8px; background:#0d6efd; color:white; cursor:pointer; }
-    button.off { background:#dc3545; }
 
     /* Wiatrak */
     .wind-wrap{max-width:var(--card-w); margin:0 auto;}
@@ -44,18 +34,8 @@
   </style>
 </head>
 <body>
-  <!-- HASŁO -->
-  <div id="lock">
-    <div class="box">
-      <h3>🔐 Dostęp chroniony</h3>
-      <input id="pwd" type="password" placeholder="Hasło" autocomplete="current-password" />
-      <button id="unlockBtn">Odblokuj</button>
-      <p id="lockMsg"></p>
-    </div>
-  </div>
-
-  <!-- APLIKACJA -->
-  <div id="app" style="display:none;">
+  <!-- APLIKACJA (bez blokady hasłem i trybu napięcia) -->
+  <div id="app">
     <div class="wind-wrap">
       <svg class="wind-svg" viewBox="0 0 64 64">
         <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
@@ -80,95 +60,27 @@
       <div class="card"><span class="label">Napięcie baterii</span> <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
       <div class="card"><span class="label">Prąd ładowania</span> <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
 
-      <!-- Hamulec -->
+      <!-- Hamulec (tylko podgląd) -->
       <div class="card">
         <span class="label">Hamulec turbiny</span>
-        <span class="value" id="brake">—</span><br><br>
-        <button id="btnBrake">Przełącz hamulec</button>
+        <span class="value" id="brake">—</span>
       </div>
 
-      <!-- Wyjście LOAD -->
+      <!-- Wyjście LOAD (tylko podgląd) -->
       <div class="card">
         <span class="label">Wyjście LOAD</span>
-        <span class="value" id="loadState">—</span><br><br>
-        <button id="btnLoad">Przełącz LOAD</button>
+        <span class="value" id="loadState">—</span>
       </div>
 
-      <!-- Tryb napięcia systemu -->
-      <div class="card">
-        <div class="label">Tryb napięcia systemu</div>
-        <div class="row" style="margin-top:8px;">
-          <select id="selSysMode">
-            <option value="Auto">Auto</option>
-            <option value="24V">24V</option>
-            <option value="48V">48V</option>
-          </select>
-          <button id="btnSysMode">Zapisz</button>
-        </div>
-        <div class="muted" id="sysModeInfo" style="margin-top:6px;">—</div>
-      </div>
-
-      <!-- Typ baterii -->
-      <div class="card">
-        <div class="label">Typ baterii</div>
-        <div class="row" style="margin-top:8px;">
-          <select id="selBattType">
-            <option value="B0">B0</option>
-            <option value="B1">B1</option>
-            <option value="B2">B2</option>
-            <option value="B3">B3</option>
-            <option value="B4">B4</option>
-          </select>
-          <button id="btnBattType">Zapisz</button>
-        </div>
-        <div class="muted" id="battTypeInfo" style="margin-top:6px;">—</div>
-      </div>
-
-      <!-- Battery Full Voltage -->
-      <div class="card">
-        <div class="label">Battery Full Voltage</div>
-        <div class="row" style="margin-top:8px;">
-          <input id="numBfv" type="number" min="20" max="72" step="0.1" />
-          <button id="btnBfv">Zapisz</button>
-        </div>
-        <div class="muted" id="bfvInfo" style="margin-top:6px;">—</div>
-      </div>
+      <!-- Usunięto: Tryb napięcia, Typ baterii, Battery Full Voltage, przyciski -->
     </div>
-
-    <!-- Usunięto sekcję wykresu -->
 
     <div id="qrcode"></div>
   </div>
 
-<!-- ====== HASŁO ====== -->
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const PASSWORD = "tomek1425";   /* ← zmień jeśli chcesz */
-  const lock = document.getElementById('lock');
-  const app  = document.getElementById('app');
-  const pwd  = document.getElementById('pwd');
-  const msg  = document.getElementById('lockMsg');
-  const btn  = document.getElementById('unlockBtn');
-
-  function doUnlock() {
-    const ok = (String(pwd.value || '').trim() === String(PASSWORD).trim());
-    if (ok) { lock.style.display='none'; app.style.display='block'; try{ initApp(); }catch(e){ console.error(e); } }
-    else { msg.textContent='❌ Złe hasło'; }
-  }
-  btn.addEventListener('click', doUnlock);
-  pwd.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
-
-  const pass = new URLSearchParams(location.search).get('pass');
-  if (pass) { pwd.value = pass; doUnlock(); }
-});
-</script>
-
-<!-- ====== APLIKACJA ====== -->
 <script>
 function initApp(){
   const PREFIX = "sterownik_wiatrowy";
-
-  /* Użyj publicznego HiveMQ po WSS (działa z przeglądarki) */
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
 
   function parseNumber(val){ const m=String(val).match(/-?\d+(?:[.,]\d+)?/); return m?parseFloat(m[0].replace(',', '.')):NaN; }
@@ -181,23 +93,12 @@ function initApp(){
     bat_v:document.getElementById('bat_v'),
     bat_a:document.getElementById('bat_a'),
     brake:document.getElementById('brake'),
-    btnBrake:document.getElementById('btnBrake'),
     loadState:document.getElementById('loadState'),
-    btnLoad:document.getElementById('btnLoad'),
-    selSysMode:document.getElementById('selSysMode'),
-    btnSysMode:document.getElementById('btnSysMode'),
-    sysModeInfo:document.getElementById('sysModeInfo'),
-    selBattType:document.getElementById('selBattType'),
-    btnBattType:document.getElementById('btnBattType'),
-    battTypeInfo:document.getElementById('battTypeInfo'),
-    numBfv:document.getElementById('numBfv'),
-    btnBfv:document.getElementById('btnBfv'),
-    bfvInfo:document.getElementById('bfvInfo'),
     mqttStatus:document.getElementById('mqttStatus'),
   };
 
   const blades=document.getElementById('blades');
-  let brakeState='OFF', loadState='OFF';
+  let brakeState='OFF';
 
   function updateRotor(power){
     const p=Math.max(0,Math.min(3000,Number(power)||0));
@@ -206,38 +107,20 @@ function initApp(){
     blades.style.setProperty('--play', brakeState==='ON' ? 'paused' : 'running');
   }
 
-  /* ====== WIELO-WARIANTOWE TOPICI (single / double / triple "_") ====== */
   const TOPICS = {
-    // SENSORY
     kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
     power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
     soc:   [`${PREFIX}/sensor/procent_na__adowania_baterii/state`, `${PREFIX}/sensor/procent_na_adowania_baterii/state`],
     bat_v: [`${PREFIX}/sensor/napi_cie_baterii/state`, `${PREFIX}/sensor/napi__cie_baterii/state`],
     bat_a: [`${PREFIX}/sensor/pr_d__adowania/state`, `${PREFIX}/sensor/pr__d___adowania/state`],
-
-    // SWITCH – hamulec
     brake_state: [`${PREFIX}/switch/hamulec_turbiny/state`],
-    brake_cmd:   [`${PREFIX}/switch/hamulec_turbiny/command`],
-
-    // SWITCH – LOAD (obie pisownie)
     load_state:  [`${PREFIX}/switch/wyjscie_load/state`, `${PREFIX}/switch/wyj__cie_load/state`],
-    load_cmd:    [`${PREFIX}/switch/wyjscie_load/command`, `${PREFIX}/switch/wyj__cie_load/command`],
-
-    // SELECT / NUMBER (również 2 warianty dla „napięcia”)
-    sysmode_state: [`${PREFIX}/select/tryb_napi_cia_systemu/state`, `${PREFIX}/select/tryb_napi__cia_systemu/state`],
-    sysmode_cmd:   [`${PREFIX}/select/tryb_napi_cia_systemu/command`, `${PREFIX}/select/tryb_napi__cia_systemu/command`],
-    batt_type_state: [`${PREFIX}/select/typ_baterii/state`],
-    batt_type_cmd:   [`${PREFIX}/select/typ_baterii/command`],
-    bfv_state: [`${PREFIX}/number/battery_full_voltage/state`],
-    bfv_cmd:   [`${PREFIX}/number/battery_full_voltage/command`],
   };
   const matchTopic = (incoming, candidates) => (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
 
-  /* ====== MQTT ====== */
   const client=mqtt.connect(WS_URL,{clientId:'webdash_'+Math.random().toString(16).slice(2)});
   client.on('connect',()=>{
     els.mqttStatus.textContent='połączono';
-    // subskrybuj wszystkie warianty /state
     Object.values(TOPICS).flat().forEach(tp=>{
       const arr = Array.isArray(tp) ? tp : [tp];
       arr.forEach(t => { if (t.endsWith('/state')) client.subscribe(t); });
@@ -251,53 +134,29 @@ function initApp(){
     const val = payload.toString();
     const n = (x)=>{ const m=String(x).match(/-?\d+(?:[.,]\d+)?/); return m?parseFloat(m[0].replace(',','.')):NaN; };
 
-    // SENSORY
     if (matchTopic(topic, TOPICS.kwh))   { const v=n(val); els.kwh.textContent  = isNaN(v)?val:fmt1dec(v); return; }
     if (matchTopic(topic, TOPICS.power)) { const v=n(val); els.power.textContent= isNaN(v)?val:fmt1dec(v); updateRotor(v); return; }
     if (matchTopic(topic, TOPICS.soc))   { const v=n(val); els.soc.textContent  = isNaN(v)?val:fmt1dec(v); return; }
     if (matchTopic(topic, TOPICS.bat_v)) { const v=n(val); els.bat_v.textContent= isNaN(v)?val:fmt1dec(v); return; }
     if (matchTopic(topic, TOPICS.bat_a)) { const v=n(val); els.bat_a.textContent= isNaN(v)?val:fmt1dec(v); return; }
 
-    // SWITCH – hamulec
     if (matchTopic(topic, TOPICS.brake_state)){
       const s=String(val).trim().toUpperCase();
       brakeState=s; els.brake.textContent=(s==='ON')?'Włączony':'Wyłączony';
-      els.btnBrake.textContent=(s==='ON')?'Wyłącz hamulec':'Włącz hamulec';
-      els.btnBrake.className=(s==='ON')?'off':'';
       updateRotor(n(els.power.textContent.replace(',','.')));
       return;
     }
-    // SWITCH – LOAD
     if (matchTopic(topic, TOPICS.load_state)){
       const s=String(val).trim().toUpperCase();
-      loadState=s; els.loadState.textContent=(s==='ON')?'Włączone':'Wyłączone';
-      els.btnLoad.textContent=(s==='ON')?'Wyłącz LOAD':'Włącz LOAD';
-      els.btnLoad.className=(s==='ON')?'off':'';
+      els.loadState.textContent=(s==='ON')?'Włączone':'Wyłączone';
       return;
     }
-
-    // SELECT / NUMBER
-    if (matchTopic(topic, TOPICS.sysmode_state)){ const opt=String(val).trim(); els.selSysMode.value=opt; els.sysModeInfo.textContent=`Bieżący tryb: ${opt}`; return; }
-    if (matchTopic(topic, TOPICS.batt_type_state)){ const opt=String(val).trim(); els.selBattType.value=opt; els.battTypeInfo.textContent=`Bieżący typ: ${opt}`; return; }
-    if (matchTopic(topic, TOPICS.bfv_state)){ const v=n(val); if(!isNaN(v)) els.numBfv.value=v.toFixed(1); els.bfvInfo.textContent=`Bieżąca wartość: ${isNaN(v)?'—':v.toFixed(1)+' V'}`; return; }
   });
 
-  /* ====== Publikacje – wysyłamy na WSZYSTKIE warianty ====== */
-  els.btnBrake.onclick = () => {
-    const next=(brakeState==='ON')?'OFF':'ON';
-    (TOPICS.brake_cmd).forEach(tp=>client.publish(tp, next));
-  };
-  els.btnLoad.onclick  = () => {
-    const next=(loadState==='ON')?'OFF':'ON';
-    (TOPICS.load_cmd).forEach(tp=>client.publish(tp, next));
-  };
-  els.btnSysMode.onclick  = () => { (TOPICS.sysmode_cmd).forEach(tp=>client.publish(tp, els.selSysMode.value)); };
-  els.btnBattType.onclick = () => { (TOPICS.batt_type_cmd).forEach(tp=>client.publish(tp, els.selBattType.value)); };
-  els.btnBfv.onclick      = () => { const x=parseNumber(els.numBfv.value); if(!isNaN(x)) (TOPICS.bfv_cmd).forEach(tp=>client.publish(tp, String(x))); };
-
-  // QR
   new QRCode(document.getElementById('qrcode'),{text:'https://tomasz179.github.io/Wiatrak-sterownik/',width:200,height:200});
 }
+
+document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
