@@ -174,14 +174,15 @@ function initApp(){
   client.on('connect', ()=>{
     els.mqttStatus.textContent = 'połączono';
 
-    // subskrypcje ze starej logiki
+    // Stara logika subskrypcji
     Object.values(TOPICS).flat().forEach(tp=>{
       const arr = Array.isArray(tp) ? tp : [tp];
       arr.forEach(t => { if (t.endsWith('/state')) client.subscribe(t); });
     });
 
-    // NA SZTYWNO prędkość wiatru
-    client.subscribe("sterownik_wiatrowy/sensor/predkosc_wiatru/state");
+    // DODANE: łap wszystko spod sterownik_wiatrowy/sensor/#
+    client.subscribe(PREFIX + "/sensor/#");
+    console.log("SUB: " + PREFIX + "/sensor/#");
   });
 
   client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
@@ -190,15 +191,19 @@ function initApp(){
 
   client.on('message',(topic,payload)=>{
     const val = payload.toString();
-    console.log('MQTT:', topic, '=>', val);  // podgląd w konsoli
+    console.log('MQTT:', topic, '=>', val);
 
     const n = (x)=>{
       const m = String(x).match(/-?\d+(?:[.,]\d+)?/);
       return m ? parseFloat(m[0].replace(',','.')) : NaN;
     };
 
-    // === PRĘDKOŚĆ WIATRU – NA SZTYWNO PO TOPICU ===
-    if (topic === "sterownik_wiatrowy/sensor/predkosc_wiatru/state") {
+    /* ---- WIATR: dowolny topic z sensor/, predkosc i wiatr ---- */
+    if (
+      topic.includes("/sensor/") &&
+      topic.toLowerCase().includes("predkosc") &&
+      topic.toLowerCase().includes("wiatr")
+    ){
       let v = n(val);
       if (isNaN(v)) {
         lastWind = null;
@@ -210,7 +215,7 @@ function initApp(){
       recomputeRotor();
       return;
     }
-    // ==============================================
+    /* ---------------------------------------------------------- */
 
     if (matchTopic(topic, TOPICS.kwh))   {
       const v = n(val);
