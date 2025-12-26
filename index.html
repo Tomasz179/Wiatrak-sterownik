@@ -114,13 +114,13 @@ function initApp(){
   const PREFIX = "sterownik_wiatrowy";
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
 
-  function parseNumber(val){
-    const m = String(val).match(/-?\d+(?:[.,]\d+)?/);
-    return m ? parseFloat(m[0].replace(',', '.')) : NaN;
-  }
   function fmt1dec(n){
     if(isNaN(n)) return "—";
     return (Math.round(n*10)/10).toFixed(1).replace('.',',');
+  }
+  function n(x){
+    const m = String(x).match(/-?\d+(?:[.,]\d+)?/);
+    return m ? parseFloat(m[0].replace(',','.')) : NaN;
   }
 
   const els = {
@@ -154,6 +154,12 @@ function initApp(){
     blades.style.setProperty('--play', brakeState === 'ON' ? 'paused' : 'running');
   }
 
+  /*
+    WAŻNE:
+    - ŻADNYCH wildcardów typu sensor/#, homeassistant/#, # itp.
+    - Subskrybujemy WYŁĄCZNIE konkretne topiki, które chcesz publicznie udostępnić.
+    - Prędkość wiatru ma swój jawny topic: sterownik_wiatrowy/public/wind_speed
+  */
   const TOPICS = {
     kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
     power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
@@ -162,6 +168,12 @@ function initApp(){
     bat_a: [`${PREFIX}/sensor/pr_d__adowania/state`, `${PREFIX}/sensor/pr__d___adowania/state`],
     brake_state: [`${PREFIX}/switch/hamulec_turbiny/state`],
     load_state:  [`${PREFIX}/switch/wyjscie_load/state`, `${PREFIX}/switch/wyj__cie_load/state`],
+
+    // NOWE: tylko jeden, wybrany topic dla wiatru (wystawiany przez HA)
+    wind_speed: [`${PREFIX}/public/wind_speed`],
+
+    // Opcjonalnie (jeśli wolisz zachować format /state):
+    // wind_speed: [`${PREFIX}/public/wind_speed/state`],
   };
 
   const matchTopic = (incoming, candidates) =>
@@ -174,15 +186,10 @@ function initApp(){
   client.on('connect', ()=>{
     els.mqttStatus.textContent = 'połączono';
 
-    // Stara logika subskrypcji
-    Object.values(TOPICS).flat().forEach(tp=>{
-      const arr = Array.isArray(tp) ? tp : [tp];
-      arr.forEach(t => { if (t.endsWith('/state')) client.subscribe(t); });
-    });
+    // Subskrypcja WYŁĄCZNIE tego, co jest na liście TOPICS (bez wildcardów)
+    Object.values(TOPICS).flat().forEach(t => client.subscribe(t));
 
-    // DODANE: łap wszystko spod sterownik_wiatrowy/sensor/#
-    client.subscribe(PREFIX + "/sensor/#");
-    console.log("SUB: " + PREFIX + "/sensor/#");
+    console.log("SUB:", Object.values(TOPICS).flat());
   });
 
   client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
@@ -193,18 +200,9 @@ function initApp(){
     const val = payload.toString();
     console.log('MQTT:', topic, '=>', val);
 
-    const n = (x)=>{
-      const m = String(x).match(/-?\d+(?:[.,]\d+)?/);
-      return m ? parseFloat(m[0].replace(',','.')) : NaN;
-    };
-
-    /* ---- WIATR: dowolny topic z sensor/, predkosc i wiatr ---- */
-    if (
-      topic.includes("/sensor/") &&
-      topic.toLowerCase().includes("predkosc") &&
-      topic.toLowerCase().includes("wiatr")
-    ){
-      let v = n(val);
+    // WIATR: tylko z jednego, konkretnego topicu
+    if (matchTopic(topic, TOPICS.wind_speed)){
+      const v = n(val);
       if (isNaN(v)) {
         lastWind = null;
         els.wind.textContent = "—";
@@ -215,7 +213,6 @@ function initApp(){
       recomputeRotor();
       return;
     }
-    /* ---------------------------------------------------------- */
 
     if (matchTopic(topic, TOPICS.kwh))   {
       const v = n(val);
