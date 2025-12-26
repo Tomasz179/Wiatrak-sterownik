@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sterownik Wiatrowy – Wind Speed (MQTT public)</title>
+  <title>Sterownik Wiatrowy – MQTT (bez wildcardów)</title>
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -11,8 +11,8 @@
   <style>
     :root{ --card-w:1100px; }
     body { font-family: Arial, sans-serif; background:#f6f7fb; padding:20px; color:#111; }
-    h1 { text-align:center; margin:8px 0 14px; }
 
+    h1 { text-align:center; margin:8px 0 14px; }
     .grid {
       display:grid;
       grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
@@ -39,8 +39,8 @@
       animation-play-state: var(--play, running);
     }
     @keyframes spin {
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
+      from { transform: rotate(0deg);}
+      to   { transform: rotate(360deg);}
     }
 
     /* Pasek statusu */
@@ -49,14 +49,12 @@
 
     /* QR */
     #qrcode { margin:18px auto; width:fit-content; }
-    .small { font-size: 12px; color:#666; margin-top:6px; }
   </style>
 </head>
-
 <body>
   <div id="app">
     <div class="wind-wrap">
-      <svg class="wind-svg" viewBox="0 0 64 64" aria-label="wiatrak">
+      <svg class="wind-svg" viewBox="0 0 64 64">
         <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
         <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
         <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
@@ -68,20 +66,43 @@
       </svg>
     </div>
 
-    <h1>Sterownik Wiatrowy – publiczny odczyt</h1>
+    <h1>Sterownik Wiatrowy M6</h1>
     <div id="status">Status MQTT: <b id="mqttStatus">inicjalizacja…</b></div>
 
     <div class="grid">
       <div class="card">
-        <span class="label">Prędkość wiatru</span>
+        <span class="label">Wiatrak (energia)</span>
+        <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Moc ładowania</span>
+        <span class="value"><span id="power">—</span><span class="unit">W</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Naładowanie baterii</span>
+        <span class="value"><span id="soc">—</span><span class="unit">%</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Napięcie baterii</span>
+        <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Prąd ładowania</span>
+        <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Prędkość wiatru (public)</span>
         <span class="value"><span id="wind">—</span><span class="unit">m/s</span></span>
-        <div class="small">Topic: <code>sterownik_wiatrowy/public/wind_speed</code></div>
       </div>
 
       <div class="card">
-        <span class="label">Ostatnia aktualizacja</span>
-        <span class="value" id="ts">—</span>
-        <div class="small">Wartość pochodzi z publicznego MQTT (HiveMQ).</div>
+        <span class="label">Hamulec turbiny</span>
+        <span class="value" id="brake">—</span>
+      </div>
+
+      <div class="card">
+        <span class="label">Wyjście LOAD</span>
+        <span class="value" id="loadState">—</span>
       </div>
     </div>
 
@@ -89,81 +110,97 @@
   </div>
 
 <script>
-(function initApp(){
-  // ====== USTAWIENIA ======
+function initApp(){
   const PREFIX = "sterownik_wiatrowy";
-  const TOPIC_WIND = `${PREFIX}/public/wind_speed`;
-
-  // HiveMQ public WebSocket Secure
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
 
-  // ====== HELPERY ======
   function parseNumber(val){
     const m = String(val).match(/-?\d+(?:[.,]\d+)?/);
     return m ? parseFloat(m[0].replace(',', '.')) : NaN;
   }
   function fmt1dec(n){
-    if (isNaN(n)) return "—";
-    return (Math.round(n*10)/10).toFixed(1).replace('.', ',');
-  }
-  function nowTime(){
-    const d = new Date();
-    return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if(isNaN(n)) return "—";
+    return (Math.round(n*10)/10).toFixed(1).replace('.',',');
   }
 
-  // ====== UI ======
   const els = {
+    kwh:  document.getElementById('kwh'),
+    power:document.getElementById('power'),
+    soc:  document.getElementById('soc'),
+    bat_v:document.getElementById('bat_v'),
+    bat_a:document.getElementById('bat_a'),
     wind: document.getElementById('wind'),
-    ts: document.getElementById('ts'),
-    mqttStatus: document.getElementById('mqttStatus'),
+    brake:document.getElementById('brake'),
+    loadState:document.getElementById('loadState'),
+    mqttStatus:document.getElementById('mqttStatus'),
   };
-  const blades = document.getElementById('blades');
 
+  const blades = document.getElementById('blades');
+  let brakeState = 'OFF';
   let lastWind = null;
+  let lastPower = null;
 
   function recomputeRotor(){
-    // Prosta mapa: 0..25 m/s => szybciej
-    let dur = 4.0;
-    if (lastWind != null && !isNaN(lastWind)) {
-      const w = Math.max(0, Math.min(25, lastWind));
-      const rpm = 10 + w * 8;        // 10..210 rpm
-      dur = Math.max(0.6, 60 / rpm); // im większe rpm, tym mniejszy czas obrotu
+    let dur;
+    if(lastWind != null && !isNaN(lastWind)){
+      const w = Math.max(0, Math.min(25, lastWind)); // [0..25] m/s
+      const rpm = 10 + w*8;
+      dur = Math.max(0.6, 60 / rpm);
     } else {
-      dur = 4.0;
+      const p = Math.max(0, Math.min(3000, Number(lastPower)||0));
+      dur = 8 - (p/3000)*(8-1.5);
     }
     blades.style.setProperty('--dur', dur.toFixed(2) + 's');
-    blades.style.setProperty('--play', 'running');
+    blades.style.setProperty('--play', brakeState === 'ON' ? 'paused' : 'running');
   }
 
-  // ====== MQTT ======
+  // TYLKO KONKRETNE TOPIKI (bez #)
+  const TOPICS = {
+    // Twoje dotychczasowe (zostawiam kompatybilność z “krzaczkami” w nazwach)
+    kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
+    power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
+    soc:   [`${PREFIX}/sensor/procent_na__adowania_baterii/state`, `${PREFIX}/sensor/procent_na_adowania_baterii/state`],
+    bat_v: [`${PREFIX}/sensor/napi_cie_baterii/state`, `${PREFIX}/sensor/napi__cie_baterii/state`],
+    bat_a: [`${PREFIX}/sensor/pr_d__adowania/state`, `${PREFIX}/sensor/pr__d___adowania/state`],
+    brake_state: [`${PREFIX}/switch/hamulec_turbiny/state`],
+    load_state:  [`${PREFIX}/switch/wyjscie_load/state`, `${PREFIX}/switch/wyj__cie_load/state`],
+
+    // NOWE: publiczny wiatr (dokładnie tak jak publikujesz z HA)
+    wind_public: [`${PREFIX}/public/wind_speed`],
+  };
+
+  const matchTopic = (incoming, candidates) =>
+    (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
+
   const client = mqtt.connect(WS_URL, {
-    clientId: 'webdash_' + Math.random().toString(16).slice(2),
+    clientId: 'webdash_'+Math.random().toString(16).slice(2),
     clean: true,
     connectTimeout: 8000,
     reconnectPeriod: 2000
   });
 
-  client.on('connect', () => {
+  client.on('connect', ()=>{
     els.mqttStatus.textContent = 'połączono';
-    client.subscribe(TOPIC_WIND, { qos: 0 }, (err) => {
-      if (err) console.error('SUB error:', err);
-      else console.log('SUB:', TOPIC_WIND);
+
+    // Subskrybujemy tylko zdefiniowane topiki, bez wildcardów
+    Object.values(TOPICS).flat().forEach(t=>{
+      client.subscribe(t, { qos: 0 });
     });
   });
 
-  client.on('reconnect', () => { els.mqttStatus.textContent = 'ponowne łączenie…'; });
-  client.on('close', () => { els.mqttStatus.textContent = 'rozłączono'; });
-  client.on('error', (e) => {
-    els.mqttStatus.textContent = 'błąd MQTT (konsola)';
-    console.error('MQTT error:', e);
-  });
+  client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
+  client.on('close', ()=>{ els.mqttStatus.textContent='rozłączono'; });
+  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT (konsola)'; console.error('MQTT error:', e); });
 
-  client.on('message', (topic, payload) => {
+  client.on('message',(topic,payload)=>{
     const val = payload.toString();
     console.log('MQTT:', topic, '=>', val);
 
-    if (topic === TOPIC_WIND) {
-      const v = parseNumber(val);
+    const n = parseNumber;
+
+    // PUBLIC WIND (pewne, jednoznaczne)
+    if (matchTopic(topic, TOPICS.wind_public)) {
+      const v = n(val);
       if (isNaN(v)) {
         lastWind = null;
         els.wind.textContent = "—";
@@ -171,20 +208,63 @@
         lastWind = v;
         els.wind.textContent = fmt1dec(v);
       }
-      els.ts.textContent = nowTime();
       recomputeRotor();
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.kwh)) {
+      const v = n(val);
+      els.kwh.textContent  = isNaN(v) ? val : fmt1dec(v);
+      return;
+    }
+    if (matchTopic(topic, TOPICS.power)) {
+      const v = n(val);
+      els.power.textContent = isNaN(v) ? val : fmt1dec(v);
+      lastPower = v;
+      recomputeRotor();
+      return;
+    }
+    if (matchTopic(topic, TOPICS.soc)) {
+      const v = n(val);
+      els.soc.textContent  = isNaN(v) ? val : fmt1dec(v);
+      return;
+    }
+    if (matchTopic(topic, TOPICS.bat_v)) {
+      const v = n(val);
+      els.bat_v.textContent= isNaN(v) ? val : fmt1dec(v);
+      return;
+    }
+    if (matchTopic(topic, TOPICS.bat_a)) {
+      const v = n(val);
+      els.bat_a.textContent= isNaN(v) ? val : fmt1dec(v);
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.brake_state)) {
+      const s = String(val).trim().toUpperCase();
+      brakeState = s;
+      els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
+      recomputeRotor();
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.load_state)) {
+      const s = String(val).trim().toUpperCase();
+      els.loadState.textContent = (s==='ON') ? 'Włączone' : 'Wyłączone';
+      return;
     }
   });
 
-  // ====== QR ======
   new QRCode(document.getElementById('qrcode'), {
-    text: window.location.href,
-    width: 200,
-    height: 200
+    text: 'https://tomasz179.github.io/Wiatrak-sterownik/',
+    width:200,
+    height:200
   });
 
   recomputeRotor();
-})();
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
