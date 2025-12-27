@@ -10,98 +10,105 @@
   <style>
     :root{ --card-w:1100px; }
 
-    /* ===== SCENA: DZIEŃ / NOC (przełączane klasą na body) ===== */
+    /* ====== SCENA: DZIEŃ / NOC ====== */
     body{
       font-family: Arial, sans-serif;
       padding:20px;
       color:#111;
       min-height:100vh;
       overflow-x:hidden;
+      margin:0;
       background-attachment: fixed;
       transition: background 600ms ease;
     }
 
-    /* DZIEŃ: niebo + słońce + łąka */
+    /* DZIEŃ: niebo + słońce + łąka (wyraźniej) */
     body.day {
       background:
-        /* chmury (statyczne tło) */
-        radial-gradient(circle at 20% 20%, rgba(255,255,255,0.9) 0%, transparent 42%),
-        radial-gradient(circle at 45% 18%, rgba(255,255,255,0.8) 0%, transparent 48%),
-        radial-gradient(circle at 70% 22%, rgba(255,255,255,0.85) 0%, transparent 45%),
-
-        /* słońce */
-        radial-gradient(circle at 85% 12%, #fff59d 0%, #ffe082 9%, rgba(255,224,130,0.45) 15%, transparent 24%),
-
-        /* niebo + linia ziemi */
-        linear-gradient(
-          to bottom,
-          #8fd3f4 0%,
-          #b3e5fc 34%,
-          #e1f5fe 55%,
-          #7ec850 56%,
-          #4caf50 100%
+        radial-gradient(circle at 85% 12%, #fff59d 0%, #ffe082 10%, rgba(255,224,130,0.35) 16%, transparent 26%),
+        linear-gradient(to bottom,
+          #78c8f2 0%,
+          #a7ddfb 28%,
+          #e9f7ff 56%,
+          #7fcd57 57%,
+          #43ad49 100%
         );
     }
 
-    /* NOC: ciemne niebo + księżyc + gwiazdy + łąka ciemniejsza */
+    /* NOC: niebo + księżyc + łąka */
     body.night {
-      color:#111;
       background:
-        /* gwiazdy */
+        radial-gradient(circle at 85% 14%, #fffde7 0%, #fff9c4 8%, rgba(255,249,196,0.25) 15%, transparent 24%),
+        linear-gradient(to bottom,
+          #061533 0%,
+          #0f2751 35%,
+          #163667 56%,
+          #2b6a39 57%,
+          #1f4d2a 100%
+        );
+    }
+
+    /* ====== CHMURY jako jedna nakładka (bez prostokątów) ======
+       Robimy to na pseudo-elementach i animujemy background-position.
+       Zero przesuwanych divów => znika efekt "kafelków".
+    */
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
+
+      /* wiele chmur jako gradienty w jednym tle */
+      background:
+        radial-gradient(ellipse at 10% 20%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.0) 60%),
+        radial-gradient(ellipse at 25% 18%, rgba(255,255,255,0.88) 0%, rgba(255,255,255,0.0) 62%),
+        radial-gradient(ellipse at 40% 22%, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.0) 60%),
+        radial-gradient(ellipse at 60% 16%, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.0) 65%),
+        radial-gradient(ellipse at 78% 24%, rgba(255,255,255,0.90) 0%, rgba(255,255,255,0.0) 60%),
+        radial-gradient(ellipse at 92% 18%, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.0) 65%);
+
+      /* rozmiar "kafla" tła chmur - duży, żeby nie było widać powtórzeń */
+      background-size: 1400px 520px;
+      background-repeat: repeat;
+
+      /* lekka miękkość */
+      filter: blur(0.2px);
+      opacity: 0.75;
+
+      /* ruch: przesuwamy tło w poziomie */
+      animation: cloudsMove 120s linear infinite;
+
+      /* wymuszenie lepszego renderingu w Chrome */
+      transform: translateZ(0);
+      will-change: background-position;
+    }
+
+    /* w nocy chmury ledwo widoczne */
+    body.night::before{ opacity: 0.16; }
+
+    @keyframes cloudsMove{
+      from { background-position: 0 0; }
+      to   { background-position: 1400px 0; }
+    }
+
+    /* gwiazdy (tylko noc) jako drugi pseudo-element */
+    body.night::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
+      background:
         radial-gradient(circle at 10% 20%, rgba(255,255,255,0.9) 0 1px, transparent 2px),
         radial-gradient(circle at 30% 15%, rgba(255,255,255,0.8) 0 1px, transparent 2px),
         radial-gradient(circle at 55% 22%, rgba(255,255,255,0.7) 0 1px, transparent 2px),
         radial-gradient(circle at 80% 18%, rgba(255,255,255,0.9) 0 1px, transparent 2px),
         radial-gradient(circle at 90% 30%, rgba(255,255,255,0.6) 0 1px, transparent 2px),
-
-        /* księżyc */
-        radial-gradient(circle at 85% 14%, #fffde7 0%, #fff9c4 7%, rgba(255,249,196,0.35) 14%, transparent 22%),
-
-        /* niebo + ziemia */
-        linear-gradient(
-          to bottom,
-          #0b1b3a 0%,
-          #132a56 35%,
-          #1d3a6b 55%,
-          #2f6b3a 56%,
-          #1f4d2a 100%
-        );
-    }
-
-    /* ===== RUCHOME CHMURY (nakładka) ===== */
-    .clouds {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-      opacity: 0.75;
-      mix-blend-mode: screen;
-    }
-    body.night .clouds {
-      opacity: 0.18;              /* w nocy ledwo widoczne */
-      mix-blend-mode: normal;
-    }
-    .cloud {
-      position: absolute;
-      top: 10%;
-      width: 520px;
-      height: 180px;
-      background:
-        radial-gradient(circle at 18% 60%, rgba(255,255,255,0.85) 0%, transparent 55%),
-        radial-gradient(circle at 40% 45%, rgba(255,255,255,0.75) 0%, transparent 60%),
-        radial-gradient(circle at 65% 58%, rgba(255,255,255,0.8) 0%, transparent 58%),
-        radial-gradient(circle at 82% 55%, rgba(255,255,255,0.7) 0%, transparent 60%);
-      filter: blur(0.2px);
-      transform: translateX(-650px);
-      animation: drift linear infinite;
-    }
-    .cloud.c1 { top: 8%;  left: -40%; animation-duration: 85s; opacity: 0.80; }
-    .cloud.c2 { top: 15%; left: -60%; animation-duration: 120s; opacity: 0.65; transform: translateX(-900px) scale(0.85); }
-    .cloud.c3 { top: 22%; left: -55%; animation-duration: 95s; opacity: 0.55; transform: translateX(-800px) scale(0.70); }
-
-    @keyframes drift {
-      from { transform: translateX(-900px); }
-      to   { transform: translateX(calc(100vw + 900px)); }
+        radial-gradient(circle at 18% 35%, rgba(255,255,255,0.7) 0 1px, transparent 2px),
+        radial-gradient(circle at 66% 32%, rgba(255,255,255,0.6) 0 1px, transparent 2px);
+      opacity:0.55;
+      transform: translateZ(0);
     }
 
     /* ===== UI ===== */
@@ -118,7 +125,7 @@
     }
 
     .card {
-      background: rgba(255,255,255,0.92);
+      background: rgba(255,255,255,0.93);
       padding:15px;
       border-radius:14px;
       box-shadow:0 10px 22px rgba(0,0,0,0.14);
@@ -141,7 +148,6 @@
       margin:0 auto 6px;
       width:240px;
       height:auto;
-      /* cień dla "osadzenia" */
       filter: drop-shadow(0 12px 12px rgba(0,0,0,0.25));
     }
     .blades {
@@ -165,21 +171,14 @@
 
     /* Karta wiatru: kolorowana dynamicznie */
     .wind-card { border: 1px solid rgba(0,0,0,0.06); }
-    .wind-card.good   { background: rgba(232,245,233,0.92); } /* zielony */
-    .wind-card.mid    { background: rgba(255,249,196,0.92); } /* żółty */
-    .wind-card.high   { background: rgba(255,224,178,0.92); } /* pomarańcz */
-    .wind-card.danger { background: rgba(255,205,210,0.92); } /* czerwony */
+    .wind-card.good   { background: rgba(232,245,233,0.93); }
+    .wind-card.mid    { background: rgba(255,249,196,0.93); }
+    .wind-card.high   { background: rgba(255,224,178,0.93); }
+    .wind-card.danger { background: rgba(255,205,210,0.93); }
   </style>
 </head>
 
 <body class="day">
-  <!-- chmury -->
-  <div class="clouds" aria-hidden="true">
-    <div class="cloud c1"></div>
-    <div class="cloud c2"></div>
-    <div class="cloud c3"></div>
-  </div>
-
   <div id="app">
     <div class="wind-wrap">
       <svg class="wind-svg" viewBox="0 0 64 64">
@@ -243,10 +242,10 @@ function initApp(){
   const TOPIC_WIND_PUBLIC = `${PREFIX}/public/wind_speed`;
 
   // progi (m/s)
-  const STOP_AT = 0.2;     // poniżej -> stop animacji
-  const MID_AT  = 3.0;     // żółty
-  const HIGH_AT = 8.0;     // pomarańcz
-  const DANG_AT = 15.0;    // czerwony
+  const STOP_AT = 0.2;
+  const MID_AT  = 3.0;
+  const HIGH_AT = 8.0;
+  const DANG_AT = 15.0;
 
   function parseNumber(val){
     const m = String(val).match(/-?\d+(?:[.,]\d+)?/);
@@ -293,27 +292,22 @@ function initApp(){
   }
 
   function recomputeRotor(){
-    // jeśli hamulec ON -> stop
     if (brakeState === 'ON') {
       blades.style.setProperty('--play', 'paused');
       return;
     }
-
-    // jeśli wiatr jest -> na wiatr
     if(lastWind != null && !isNaN(lastWind)){
       if(lastWind < STOP_AT){
         blades.style.setProperty('--play', 'paused');
         return;
       }
-      const w = Math.max(0, Math.min(25, lastWind)); // [0..25]
+      const w = Math.max(0, Math.min(25, lastWind));
       const rpm = 10 + w*8;
       const dur = Math.max(0.6, 60 / rpm);
       blades.style.setProperty('--dur', dur.toFixed(2) + 's');
       blades.style.setProperty('--play', 'running');
       return;
     }
-
-    // fallback na moc (gdy brak wiatru)
     const p = Math.max(0, Math.min(3000, Number(lastPower)||0));
     const dur = 8 - (p/3000)*(8-1.5);
     blades.style.setProperty('--dur', Math.max(1.5, dur).toFixed(2) + 's');
@@ -416,7 +410,6 @@ function initApp(){
     }
   });
 
-  // start
   setWindCardClass(null);
   recomputeRotor();
 }
