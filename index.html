@@ -17,10 +17,10 @@
       color:#111;
       min-height:100vh;
       margin:0;
-      background:#000; /* fallback */
+      background:#000;
     }
 
-    /* ===== VIDEO BACKGROUND ===== */
+    /* ===== VIDEO BACKGROUND (SINGLE, IDEAL LOOP) ===== */
     .bg{
       position: fixed;
       inset: 0;
@@ -28,6 +28,7 @@
       overflow: hidden;
       background: url("assets/wiatrak.webp") center top / cover no-repeat;
     }
+
     .bg-video{
       width:100%;
       height:100%;
@@ -35,6 +36,7 @@
       object-position:center top;
       display:block;
     }
+
     @media (prefers-reduced-motion: reduce){
       .bg-video{ display:none; }
     }
@@ -55,17 +57,22 @@
 
     /* ===== UI ===== */
     #app{ position: relative; z-index: 1; }
-    h1 { text-align:center; margin:8px 0 14px; text-shadow:0 1px 0 rgba(255,255,255,0.6); }
 
-    #status {
+    h1{
+      text-align:center;
+      margin:8px 0 14px;
+      text-shadow:0 1px 0 rgba(255,255,255,0.6);
+    }
+
+    #status{
       max-width:var(--card-w);
       margin:0.5rem auto 1rem;
       font-size:12px;
       text-align:center;
       color:#111;
-      text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+      text-shadow:0 1px 0 rgba(255,255,255,0.6);
     }
-    #status b { font-weight:700; }
+    #status b{ font-weight:700; }
 
     .grid{
       display:grid;
@@ -87,8 +94,7 @@
     .value{ float:right; font-weight:700; }
     .unit{ margin-left:4px; color:#666; font-weight:500 }
 
-    /* Karta wiatru: kolorowana */
-    .wind-card { border: 1px solid rgba(0,0,0,0.06); }
+    .wind-card{ border: 1px solid rgba(0,0,0,0.06); }
     .wind-card.good   { background: rgba(232,245,233,0.92); }
     .wind-card.mid    { background: rgba(255,249,196,0.92); }
     .wind-card.high   { background: rgba(255,224,178,0.92); }
@@ -101,7 +107,11 @@
   <!-- ===== VIDEO BACKGROUND ===== -->
   <div class="bg" aria-hidden="true">
     <video class="bg-video"
-           autoplay muted loop playsinline preload="auto"
+           autoplay
+           muted
+           loop
+           playsinline
+           preload="auto"
            poster="assets/wiatrak.webp">
       <source src="assets/wiatrak.mp4" type="video/mp4">
     </video>
@@ -162,7 +172,6 @@ function initApp(){
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
   const TOPIC_WIND_PUBLIC = `${PREFIX}/public/wind_speed`;
 
-  // progi (m/s) – do kolorowania karty wiatru
   const MID_AT  = 3.0;
   const HIGH_AT = 8.0;
   const DANG_AT = 15.0;
@@ -198,7 +207,6 @@ function initApp(){
     else els.windCard.classList.add('danger');
   }
 
-  // Twoje dotychczasowe topic-y (z alternatywami od "krzaczków")
   const TOPICS = {
     kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
     power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
@@ -226,11 +234,7 @@ function initApp(){
 
   client.on('connect', ()=>{
     els.mqttStatus.textContent = 'połączono';
-
-    // subskrypcje wszystkich Twoich topiców
     Object.values(TOPICS).flat().forEach(t => client.subscribe(t, {qos:0}));
-
-    // publiczny wiatr
     client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
   });
 
@@ -241,7 +245,6 @@ function initApp(){
   client.on('message',(topic,payload)=>{
     const val = payload.toString();
 
-    // PUBLIC WIND
     if (topic === TOPIC_WIND_PUBLIC) {
       const v = noteNum(val);
       els.wind.textContent = (v == null) ? "—" : fmt1dec(v);
@@ -249,35 +252,11 @@ function initApp(){
       return;
     }
 
-    if (matchTopic(topic, TOPICS.kwh)) {
-      const v = noteNum(val);
-      els.kwh.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.power)) {
-      const v = noteNum(val);
-      els.power.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.soc)) {
-      const v = noteNum(val);
-      els.soc.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.bat_v)) {
-      const v = noteNum(val);
-      els.bat_v.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.bat_a)) {
-      const v = noteNum(val);
-      els.bat_a.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
+    if (matchTopic(topic, TOPICS.kwh))   { const v = noteNum(val); els.kwh.textContent   = (v==null)?"—":fmt1dec(v); return; }
+    if (matchTopic(topic, TOPICS.power)) { const v = noteNum(val); els.power.textContent = (v==null)?"—":fmt1dec(v); return; }
+    if (matchTopic(topic, TOPICS.soc))   { const v = noteNum(val); els.soc.textContent   = (v==null)?"—":fmt1dec(v); return; }
+    if (matchTopic(topic, TOPICS.bat_v)) { const v = noteNum(val); els.bat_v.textContent = (v==null)?"—":fmt1dec(v); return; }
+    if (matchTopic(topic, TOPICS.bat_a)) { const v = noteNum(val); els.bat_a.textContent = (v==null)?"—":fmt1dec(v); return; }
 
     if (matchTopic(topic, TOPICS.brake_state)) {
       const s = String(val).trim().toUpperCase();
