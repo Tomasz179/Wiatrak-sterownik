@@ -20,9 +20,7 @@
       background:#000; /* fallback */
     }
 
-    /* ===== VIDEO BACKGROUND (DUAL + CROSSFADE) =====
-       Dlaczego tak: przeglądarki potrafią zrobić "mikroskok" przy loop.
-       Dwa wideo naprzemiennie + fade = brak widocznego resetu. */
+    /* ===== VIDEO BACKGROUND ===== */
     .bg{
       position: fixed;
       inset: 0;
@@ -30,42 +28,13 @@
       overflow: hidden;
       background: url("assets/wiatrak.webp") center top / cover no-repeat;
     }
-
     .bg-video{
-      position:absolute;
-      inset:0;
       width:100%;
       height:100%;
       object-fit:cover;
       object-position:center top;
       display:block;
-      opacity:0;
     }
-
-    /* Ustaw "CYCLE" na 2× długość wideo.
-       Jeśli Twój plik ma ~8.2s, ustawiamy 16.4s. */
-    .v1{ animation: fadeA 16.4s linear infinite; }
-    .v2{ animation: fadeB 16.4s linear infinite; }
-
-    /* 0–50% = pierwsza połówka cyklu (~8.2s)
-       50–100% = druga połówka cyklu (~8.2s)
-       Przenikanie w okolicy 50%. */
-    @keyframes fadeA{
-      0%   { opacity:1 }
-      47%  { opacity:1 }
-      50%  { opacity:0 }
-      97%  { opacity:0 }
-      100% { opacity:1 }
-    }
-    @keyframes fadeB{
-      0%   { opacity:0 }
-      47%  { opacity:0 }
-      50%  { opacity:1 }
-      97%  { opacity:1 }
-      100% { opacity:0 }
-    }
-
-    /* Dostępność / oszczędność: wyłącz animacje */
     @media (prefers-reduced-motion: reduce){
       .bg-video{ display:none; }
     }
@@ -86,15 +55,9 @@
 
     /* ===== UI ===== */
     #app{ position: relative; z-index: 1; }
+    h1 { text-align:center; margin:8px 0 14px; text-shadow:0 1px 0 rgba(255,255,255,0.6); }
 
-    h1{
-      text-align:center;
-      margin:8px 0 14px;
-      color:#111;
-      text-shadow: 0 1px 0 rgba(255,255,255,0.6);
-    }
-
-    #status{
+    #status {
       max-width:var(--card-w);
       margin:0.5rem auto 1rem;
       font-size:12px;
@@ -102,7 +65,7 @@
       color:#111;
       text-shadow: 0 1px 0 rgba(255,255,255,0.6);
     }
-    #status b{ font-weight:700; }
+    #status b { font-weight:700; }
 
     .grid{
       display:grid;
@@ -125,7 +88,7 @@
     .unit{ margin-left:4px; color:#666; font-weight:500 }
 
     /* Karta wiatru: kolorowana */
-    .wind-card{ border: 1px solid rgba(0,0,0,0.06); }
+    .wind-card { border: 1px solid rgba(0,0,0,0.06); }
     .wind-card.good   { background: rgba(232,245,233,0.92); }
     .wind-card.mid    { background: rgba(255,249,196,0.92); }
     .wind-card.high   { background: rgba(255,224,178,0.92); }
@@ -135,12 +98,11 @@
 
 <body>
 
-  <!-- ===== VIDEO BACKGROUND (2x video + crossfade) ===== -->
+  <!-- ===== VIDEO BACKGROUND ===== -->
   <div class="bg" aria-hidden="true">
-    <video class="bg-video v1" autoplay muted playsinline preload="auto" poster="assets/wiatrak.webp">
-      <source src="assets/wiatrak.mp4" type="video/mp4">
-    </video>
-    <video class="bg-video v2" autoplay muted playsinline preload="auto" poster="assets/wiatrak.webp">
+    <video class="bg-video"
+           autoplay muted loop playsinline preload="auto"
+           poster="assets/wiatrak.webp">
       <source src="assets/wiatrak.mp4" type="video/mp4">
     </video>
   </div>
@@ -264,7 +226,11 @@ function initApp(){
 
   client.on('connect', ()=>{
     els.mqttStatus.textContent = 'połączono';
+
+    // subskrypcje wszystkich Twoich topiców
     Object.values(TOPICS).flat().forEach(t => client.subscribe(t, {qos:0}));
+
+    // publiczny wiatr
     client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
   });
 
@@ -275,6 +241,7 @@ function initApp(){
   client.on('message',(topic,payload)=>{
     const val = payload.toString();
 
+    // PUBLIC WIND
     if (topic === TOPIC_WIND_PUBLIC) {
       const v = noteNum(val);
       els.wind.textContent = (v == null) ? "—" : fmt1dec(v);
@@ -326,15 +293,6 @@ function initApp(){
   });
 
   setWindCardClass(null);
-
-  // Ochrona: gdyby przeglądarka zatrzymała autoplay po powrocie na kartę
-  document.addEventListener('visibilitychange', ()=>{
-    if (!document.hidden){
-      document.querySelectorAll('.bg-video').forEach(v=>{
-        if (v && v.paused) v.play().catch(()=>{});
-      });
-    }
-  });
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
