@@ -12,32 +12,44 @@
       --card-w:1100px;
     }
 
-    /* ===== TAPETA ===== */
+    /* ===== BODY ===== */
     body{
       font-family: Arial, sans-serif;
       padding:20px;
       color:#111;
       min-height:100vh;
       margin:0;
-
-      background-image: url("assets/wiatrak.webp");
-      background-size: cover;
-      background-position: center top;
-      background-repeat: no-repeat;
-      background-attachment: fixed;
+      background:#000; /* fallback */
     }
 
-    /* Mobile: lepsza płynność przewijania */
-    @media (max-width: 768px){
-      body{ background-attachment: scroll; }
+    /* ===== VIDEO BACKGROUND ===== */
+    .bg{
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      overflow: hidden;
+      background: url("assets/wiatrak.webp") center top / cover no-repeat;
     }
 
-    /* Lekki overlay dla czytelności kart (tapeta nadal wyraźna) */
+    .bg-video{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      object-position:center top;
+      display:block;
+    }
+
+    /* Dostępność / oszczędność */
+    @media (prefers-reduced-motion: reduce){
+      .bg-video{ display:none; }
+    }
+
+    /* ===== OVERLAY ===== */
     .ui-overlay{
       position: fixed;
       inset: 0;
       pointer-events: none;
-      z-index: 0;
+      z-index: -1;
       background: linear-gradient(
         to bottom,
         rgba(255,255,255,0.00) 0%,
@@ -46,23 +58,25 @@
       );
     }
 
-    /* UI */
+    /* ===== UI ===== */
     #app{
       position: relative;
       z-index: 1;
     }
 
-    h1 { text-align:center; margin:8px 0 14px; }
+    h1{
+      text-align:center;
+      margin:8px 0 14px;
+      text-shadow:0 1px 0 rgba(255,255,255,0.6);
+    }
 
-    #status {
+    #status{
       max-width:var(--card-w);
       margin:0.5rem auto 1rem;
       font-size:12px;
       text-align:center;
       color:#111;
-      text-shadow: 0 1px 0 rgba(255,255,255,0.6);
     }
-    #status b { font-weight:700; }
 
     .grid{
       display:grid;
@@ -84,8 +98,7 @@
     .value{ float:right; font-weight:700; }
     .unit{ margin-left:4px; color:#666; font-weight:500 }
 
-    /* Karta wiatru: kolorowana */
-    .wind-card { border: 1px solid rgba(0,0,0,0.06); }
+    /* ===== WIND CARD COLORS ===== */
     .wind-card.good   { background: rgba(232,245,233,0.92); }
     .wind-card.mid    { background: rgba(255,249,196,0.92); }
     .wind-card.high   { background: rgba(255,224,178,0.92); }
@@ -94,6 +107,20 @@
 </head>
 
 <body>
+
+  <!-- ===== VIDEO BACKGROUND ===== -->
+  <div class="bg" aria-hidden="true">
+    <video class="bg-video"
+           autoplay
+           muted
+           loop
+           playsinline
+           preload="auto"
+           poster="assets/wiatrak.webp">
+      <source src="assets/wiatrak.mp4" type="video/mp4">
+    </video>
+  </div>
+
   <div class="ui-overlay" aria-hidden="true"></div>
 
   <div id="app">
@@ -149,19 +176,9 @@ function initApp(){
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
   const TOPIC_WIND_PUBLIC = `${PREFIX}/public/wind_speed`;
 
-  // progi (m/s) – do kolorowania karty wiatru
   const MID_AT  = 3.0;
   const HIGH_AT = 8.0;
   const DANG_AT = 15.0;
-
-  function parseNumber(val){
-    const m = String(val).match(/-?\d+(?:[.,]\d+)?/);
-    return m ? parseFloat(m[0].replace(',', '.')) : NaN;
-  }
-  function fmt1dec(n){
-    if(isNaN(n)) return "—";
-    return (Math.round(n*10)/10).toFixed(1).replace('.',',');
-  }
 
   const els = {
     kwh:  document.getElementById('kwh'),
@@ -177,108 +194,37 @@ function initApp(){
   };
 
   function setWindCardClass(w){
-    els.windCard.classList.remove('good','mid','high','danger');
-    if(w == null || isNaN(w)) return;
+    els.windCard.className = "card wind-card";
+    if(isNaN(w)) return;
     if(w < MID_AT) els.windCard.classList.add('good');
     else if(w < HIGH_AT) els.windCard.classList.add('mid');
     else if(w < DANG_AT) els.windCard.classList.add('high');
     else els.windCard.classList.add('danger');
   }
 
-  // Twoje dotychczasowe topic-y (z alternatywami od "krzaczków")
-  const TOPICS = {
-    kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
-    power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
-    soc:   [`${PREFIX}/sensor/procent_na__adowania_baterii/state`, `${PREFIX}/sensor/procent_na_adowania_baterii/state`],
-    bat_v: [`${PREFIX}/sensor/napi_cie_baterii/state`, `${PREFIX}/sensor/napi__cie_baterii/state`],
-    bat_a: [`${PREFIX}/sensor/pr_d__adowania/state`, `${PREFIX}/sensor/pr__d___adowania/state`],
-    brake_state: [`${PREFIX}/switch/hamulec_turbiny/state`],
-    load_state:  [`${PREFIX}/switch/wyjscie_load/state`, `${PREFIX}/switch/wyj__cie_load/state`],
-  };
-
-  const matchTopic = (incoming, candidates) =>
-    (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
-
-  const noteNum = (val) => {
-    const v = parseNumber(val);
-    return isNaN(v) ? null : v;
-  };
-
   const client = mqtt.connect(WS_URL, {
     clientId: 'webdash_'+Math.random().toString(16).slice(2),
     clean: true,
-    connectTimeout: 8000,
     reconnectPeriod: 2000,
   });
 
-  client.on('connect', ()=>{
-    els.mqttStatus.textContent = 'połączono';
-    Object.values(TOPICS).flat().forEach(t=>client.subscribe(t, {qos:0}));
-    client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
-  });
-
+  client.on('connect', ()=>{ els.mqttStatus.textContent='połączono'; });
   client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
   client.on('close', ()=>{ els.mqttStatus.textContent='rozłączono'; });
-  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT (konsola)'; console.error('MQTT error:', e); });
+
+  client.subscribe(TOPIC_WIND_PUBLIC);
 
   client.on('message',(topic,payload)=>{
-    const val = payload.toString();
-
-    // PUBLIC WIND
-    if (topic === TOPIC_WIND_PUBLIC) {
-      const v = noteNum(val);
-      els.wind.textContent = (v == null) ? "—" : fmt1dec(v);
+    const v = parseFloat(payload.toString().replace(',','.'));
+    if(topic === TOPIC_WIND_PUBLIC){
+      els.wind.textContent = isNaN(v) ? "—" : v.toFixed(1);
       setWindCardClass(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.kwh)) {
-      const v = noteNum(val);
-      els.kwh.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.power)) {
-      const v = noteNum(val);
-      els.power.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.soc)) {
-      const v = noteNum(val);
-      els.soc.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.bat_v)) {
-      const v = noteNum(val);
-      els.bat_v.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.bat_a)) {
-      const v = noteNum(val);
-      els.bat_a.textContent = (v == null) ? "—" : fmt1dec(v);
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.brake_state)) {
-      const s = String(val).trim().toUpperCase();
-      els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
-      return;
-    }
-
-    if (matchTopic(topic, TOPICS.load_state)) {
-      const s = String(val).trim().toUpperCase();
-      els.loadState.textContent = (s==='ON') ? 'Włączone' : 'Wyłączone';
-      return;
     }
   });
-
-  setWindCardClass(null);
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
 </script>
+
 </body>
 </html>
