@@ -3,16 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sterownik Wiatrowy – MQTT (public wind_speed)</title>
+  <title>Sterownik Wiatrowy – MQTT</title>
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
   <style>
     :root{ --card-w:1100px; }
-    body { font-family: Arial, sans-serif; background:#f6f7fb; padding:20px; color:#111; }
+
+    body {
+      font-family: Arial, sans-serif;
+      padding:20px;
+      color:#111;
+
+      /* TŁO */
+      background:
+        radial-gradient(circle at 20% 20%, #eaf2ff 0%, transparent 40%),
+        radial-gradient(circle at 80% 10%, #eef7ff 0%, transparent 35%),
+        linear-gradient(135deg, #f4f7fb, #e9eef5);
+      min-height:100vh;
+    }
 
     h1 { text-align:center; margin:8px 0 14px; }
+
     .grid {
       display:grid;
       grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
@@ -20,12 +32,14 @@
       max-width:var(--card-w);
       margin:0 auto;
     }
+
     .card {
       background:white;
       padding:15px;
-      border-radius:12px;
-      box-shadow:0 3px 10px rgba(0,0,0,0.07);
+      border-radius:14px;
+      box-shadow:0 6px 18px rgba(0,0,0,0.08);
     }
+
     .label { font-weight:bold; }
     .value { float:right; font-weight:700; }
     .unit { margin-left:4px; color:#666; font-weight:500 }
@@ -43,16 +57,18 @@
       to   { transform: rotate(360deg);}
     }
 
-    /* Pasek statusu */
-    #status { max-width:var(--card-w); margin:0.5rem auto; font-size:12px; color:#333; }
+    /* Status */
+    #status {
+      max-width:var(--card-w);
+      margin:0.5rem auto 1rem;
+      font-size:12px;
+      color:#333;
+      text-align:center;
+    }
     #status b { font-weight:700; }
-
-    /* QR */
-    #qrcode { margin:18px auto; width:fit-content; }
-    .small { font-size:12px; color:#666; margin-top:8px; }
-    code { background:#f0f0f0; padding:2px 6px; border-radius:6px; }
   </style>
 </head>
+
 <body>
   <div id="app">
     <div class="wind-wrap">
@@ -76,18 +92,22 @@
         <span class="label">Wiatrak (energia)</span>
         <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span>
       </div>
+
       <div class="card">
         <span class="label">Moc ładowania</span>
         <span class="value"><span id="power">—</span><span class="unit">W</span></span>
       </div>
+
       <div class="card">
         <span class="label">Naładowanie baterii</span>
         <span class="value"><span id="soc">—</span><span class="unit">%</span></span>
       </div>
+
       <div class="card">
         <span class="label">Napięcie baterii</span>
         <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span>
       </div>
+
       <div class="card">
         <span class="label">Prąd ładowania</span>
         <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span>
@@ -108,8 +128,6 @@
         <span class="value" id="loadState">—</span>
       </div>
     </div>
-
-    <div id="qrcode"></div>
   </div>
 
 <script>
@@ -180,50 +198,40 @@ function initApp(){
 
   client.on('connect', ()=>{
     els.mqttStatus.textContent = 'połączono';
-
-    Object.values(TOPICS).flat().forEach(t=>{
-      client.subscribe(t, {qos:0});
-    });
-
-    client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
+    Object.values(TOPICS).flat().forEach(t=>client.subscribe(t,{qos:0}));
+    client.subscribe(TOPIC_WIND_PUBLIC,{qos:0});
   });
 
-  client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
-  client.on('close', ()=>{ els.mqttStatus.textContent='rozłączono'; });
-  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT'; console.error(e); });
+  client.on('reconnect', ()=>els.mqttStatus.textContent='ponowne łączenie…');
+  client.on('close', ()=>els.mqttStatus.textContent='rozłączono');
+  client.on('error', e=>{ els.mqttStatus.textContent='błąd MQTT'; console.error(e); });
 
   client.on('message',(topic,payload)=>{
     const val = payload.toString();
-    const n = (x)=>parseNumber(x);
+    const n = x=>parseNumber(x);
 
     if (topic === TOPIC_WIND_PUBLIC) {
       const v = n(val);
-      lastWind = isNaN(v) ? null : v;
-      els.wind.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      lastWind = isNaN(v)?null:v;
+      els.wind.textContent = isNaN(v)?"—":fmt1dec(v);
       recomputeRotor();
       return;
     }
 
-    if (matchTopic(topic, TOPICS.kwh))   els.kwh.textContent = fmt1dec(n(val));
-    if (matchTopic(topic, TOPICS.power)) { lastPower = n(val); els.power.textContent = fmt1dec(lastPower); recomputeRotor(); }
-    if (matchTopic(topic, TOPICS.soc))   els.soc.textContent = fmt1dec(n(val));
+    if (matchTopic(topic, TOPICS.kwh)) els.kwh.textContent = fmt1dec(n(val));
+    if (matchTopic(topic, TOPICS.power)){ lastPower=n(val); els.power.textContent=fmt1dec(lastPower); recomputeRotor(); }
+    if (matchTopic(topic, TOPICS.soc)) els.soc.textContent = fmt1dec(n(val));
     if (matchTopic(topic, TOPICS.bat_v)) els.bat_v.textContent = fmt1dec(n(val));
     if (matchTopic(topic, TOPICS.bat_a)) els.bat_a.textContent = fmt1dec(n(val));
 
     if (matchTopic(topic, TOPICS.brake_state)){
       brakeState = val.toUpperCase();
-      els.brake.textContent = brakeState === 'ON' ? 'Włączony' : 'Wyłączony';
+      els.brake.textContent = brakeState==='ON'?'Włączony':'Wyłączony';
       recomputeRotor();
     }
     if (matchTopic(topic, TOPICS.load_state)){
-      els.loadState.textContent = val.toUpperCase() === 'ON' ? 'Włączone' : 'Wyłączone';
+      els.loadState.textContent = val.toUpperCase()==='ON'?'Włączone':'Wyłączone';
     }
-  });
-
-  new QRCode(document.getElementById('qrcode'), {
-    text: window.location.href,
-    width:200,
-    height:200
   });
 }
 
