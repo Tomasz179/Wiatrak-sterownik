@@ -20,7 +20,7 @@
       background:#000;
     }
 
-    /* ===== VIDEO BACKGROUND (SINGLE, IDEAL LOOP) ===== */
+    /* ===== VIDEO BACKGROUND ===== */
     .bg{
       position: fixed;
       inset: 0;
@@ -28,7 +28,6 @@
       overflow: hidden;
       background: url("assets/wiatrak.webp") center top / cover no-repeat;
     }
-
     .bg-video{
       width:100%;
       height:100%;
@@ -36,7 +35,6 @@
       object-position:center top;
       display:block;
     }
-
     @media (prefers-reduced-motion: reduce){
       .bg-video{ display:none; }
     }
@@ -71,6 +69,7 @@
       text-align:center;
       color:#111;
       text-shadow:0 1px 0 rgba(255,255,255,0.6);
+      line-height: 1.35;
     }
     #status b{ font-weight:700; }
 
@@ -94,11 +93,15 @@
     .value{ float:right; font-weight:700; }
     .unit{ margin-left:4px; color:#666; font-weight:500 }
 
+    /* Karta wiatru: kolorowana */
     .wind-card{ border: 1px solid rgba(0,0,0,0.06); }
     .wind-card.good   { background: rgba(232,245,233,0.92); }
     .wind-card.mid    { background: rgba(255,249,196,0.92); }
     .wind-card.high   { background: rgba(255,224,178,0.92); }
     .wind-card.danger { background: rgba(255,205,210,0.92); }
+
+    /* małe dopracowanie: żeby wartości nie "skakały" szerokością */
+    .value{ min-width: 90px; text-align:right; display:inline-block; }
   </style>
 </head>
 
@@ -121,7 +124,10 @@
 
   <div id="app">
     <h1>Sterownik Wiatrowy M6</h1>
-    <div id="status">Status MQTT: <b id="mqttStatus">inicjalizacja…</b></div>
+    <div id="status">
+      Status MQTT: <b id="mqttStatus">inicjalizacja…</b>
+      <span id="diag"></span>
+    </div>
 
     <div class="grid">
       <div class="card">
@@ -167,14 +173,18 @@
   </div>
 
 <script>
-function initApp(){
+(() => {
   const PREFIX = "sterownik_wiatrowy";
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
   const TOPIC_WIND_PUBLIC = `${PREFIX}/public/wind_speed`;
 
+  // progi (m/s) – do kolorowania karty wiatru
   const MID_AT  = 3.0;
   const HIGH_AT = 8.0;
   const DANG_AT = 15.0;
+
+  // watchdog: ile sekund bez żadnej wiadomości uznajemy za "zawieszenie"
+  const WATCHDOG_IDLE_SEC = 20;
 
   function parseNumber(val){
     const m = String(val).match(/-?\d+(?:[.,]\d+)?/);
@@ -196,6 +206,7 @@ function initApp(){
     brake:document.getElementById('brake'),
     loadState:document.getElementById('loadState'),
     mqttStatus:document.getElementById('mqttStatus'),
+    diag:document.getElementById('diag'),
   };
 
   function setWindCardClass(w){
@@ -207,6 +218,7 @@ function initApp(){
     else els.windCard.classList.add('danger');
   }
 
+  // Twoje topic-y (z alternatywami od "krzaczków")
   const TOPICS = {
     kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
     power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
@@ -217,6 +229,8 @@ function initApp(){
     load_state:  [`${PREFIX}/switch/wyjscie_load/state`, `${PREFIX}/switch/wyj__cie_load/state`],
   };
 
+  const allTopics = [...new Set(Object.values(TOPICS).flat().concat([TOPIC_WIND_PUBLIC]))];
+
   const matchTopic = (incoming, candidates) =>
     (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
 
@@ -225,56 +239,136 @@ function initApp(){
     return isNaN(v) ? null : v;
   };
 
-  const client = mqtt.connect(WS_URL, {
-    clientId: 'webdash_'+Math.random().toString(16).slice(2),
-    clean: true,
-    connectTimeout: 8000,
-    reconnectPeriod: 2000,
-  });
+  let client = null;
+  let lastMsgAt = 0;
+  let msgCount = 0;
+  let reconnectCount = 0;
 
-  client.on('connect', ()=>{
-    els.mqttStatus.textContent = 'połączono';
-    Object.values(TOPICS).flat().forEach(t => client.subscribe(t, {qos:0}));
-    client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
-  });
+  function renderDiag(extra=""){
+    const last = lastMsgAt ? new Date(lastMsgAt).toLocaleTimeString() : "—";
+    els.diag.innerHTML =
+      `<span> | odebrano: <b>${msgCount}</b></span>` +
+      `<span> | ostatnio: <b>${last}</b></span>` +
+      `<span> | reconnect: <b>${reconnectCount}</b></span>` +
+      (extra ? `<span> | ${extra}</span>` : ``);
+  }
 
-  client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
-  client.on('close', ()=>{ els.mqttStatus.textContent='rozłączono'; });
-  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT (konsola)'; console.error('MQTT error:', e); });
+  function subscribeAll(){
+    if(!client) return;
+    allTopics.forEach(t => client.subscribe(t, {qos:0}));
+  }
 
-  client.on('message',(topic,payload)=>{
-    const val = payload.toString();
-
-    if (topic === TOPIC_WIND_PUBLIC) {
-      const v = noteNum(val);
-      els.wind.textContent = (v == null) ? "—" : fmt1dec(v);
-      setWindCardClass(v);
-      return;
+  function connect(){
+    if(client){
+      try { client.end(true); } catch(_) {}
+      client = null;
     }
 
-    if (matchTopic(topic, TOPICS.kwh))   { const v = noteNum(val); els.kwh.textContent   = (v==null)?"—":fmt1dec(v); return; }
-    if (matchTopic(topic, TOPICS.power)) { const v = noteNum(val); els.power.textContent = (v==null)?"—":fmt1dec(v); return; }
-    if (matchTopic(topic, TOPICS.soc))   { const v = noteNum(val); els.soc.textContent   = (v==null)?"—":fmt1dec(v); return; }
-    if (matchTopic(topic, TOPICS.bat_v)) { const v = noteNum(val); els.bat_v.textContent = (v==null)?"—":fmt1dec(v); return; }
-    if (matchTopic(topic, TOPICS.bat_a)) { const v = noteNum(val); els.bat_a.textContent = (v==null)?"—":fmt1dec(v); return; }
+    client = mqtt.connect(WS_URL, {
+      clientId: 'webdash_'+Math.random().toString(16).slice(2),
+      clean: true,
+      connectTimeout: 8000,
+      reconnectPeriod: 2000,
+      keepalive: 30,
+      resubscribe: true,
+    });
 
-    if (matchTopic(topic, TOPICS.brake_state)) {
-      const s = String(val).trim().toUpperCase();
-      els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
-      return;
+    client.on('connect', ()=>{
+      els.mqttStatus.textContent = 'połączono';
+      subscribeAll();
+      renderDiag('subskrypcje OK');
+    });
+
+    client.on('reconnect', ()=>{
+      reconnectCount++;
+      els.mqttStatus.textContent = 'ponowne łączenie…';
+      renderDiag();
+    });
+
+    client.on('close', ()=>{
+      els.mqttStatus.textContent = 'rozłączono';
+      renderDiag();
+    });
+
+    client.on('offline', ()=>{
+      els.mqttStatus.textContent = 'offline';
+      renderDiag();
+    });
+
+    client.on('end', ()=>{
+      els.mqttStatus.textContent = 'zakończono';
+      renderDiag();
+    });
+
+    client.on('error', (e)=>{
+      els.mqttStatus.textContent = 'błąd MQTT (konsola)';
+      console.error('MQTT error:', e);
+      renderDiag();
+    });
+
+    client.on('message', (topic, payload)=>{
+      lastMsgAt = Date.now();
+      msgCount++;
+      renderDiag();
+
+      const val = payload.toString();
+
+      // PUBLIC WIND
+      if (topic === TOPIC_WIND_PUBLIC) {
+        const v = noteNum(val);
+        els.wind.textContent = (v == null) ? "—" : fmt1dec(v);
+        setWindCardClass(v);
+        return;
+      }
+
+      if (matchTopic(topic, TOPICS.kwh))   { const v = noteNum(val); els.kwh.textContent   = (v==null)?"—":fmt1dec(v); return; }
+      if (matchTopic(topic, TOPICS.power)) { const v = noteNum(val); els.power.textContent = (v==null)?"—":fmt1dec(v); return; }
+      if (matchTopic(topic, TOPICS.soc))   { const v = noteNum(val); els.soc.textContent   = (v==null)?"—":fmt1dec(v); return; }
+      if (matchTopic(topic, TOPICS.bat_v)) { const v = noteNum(val); els.bat_v.textContent = (v==null)?"—":fmt1dec(v); return; }
+      if (matchTopic(topic, TOPICS.bat_a)) { const v = noteNum(val); els.bat_a.textContent = (v==null)?"—":fmt1dec(v); return; }
+
+      if (matchTopic(topic, TOPICS.brake_state)) {
+        const s = String(val).trim().toUpperCase();
+        els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
+        return;
+      }
+
+      if (matchTopic(topic, TOPICS.load_state)) {
+        const s = String(val).trim().toUpperCase();
+        els.loadState.textContent = (s==='ON') ? 'Włączone' : 'Wyłączone';
+        return;
+      }
+    });
+  }
+
+  // Watchdog: jeśli urządzenie publikuje, a strona "stoi", to wymuszamy restart połączenia.
+  setInterval(()=>{
+    if(!lastMsgAt) return;
+    const idleSec = (Date.now() - lastMsgAt) / 1000;
+    if(idleSec > WATCHDOG_IDLE_SEC){
+      console.warn(`Watchdog: brak wiadomości ${Math.round(idleSec)}s -> restart MQTT`);
+      els.mqttStatus.textContent = `watchdog (${Math.round(idleSec)}s) – restart…`;
+      renderDiag();
+      connect();
     }
+  }, 5000);
 
-    if (matchTopic(topic, TOPICS.load_state)) {
-      const s = String(val).trim().toUpperCase();
-      els.loadState.textContent = (s==='ON') ? 'Włączone' : 'Wyłączone';
-      return;
+  // Po powrocie na kartę: wznowienie autoplay + odświeżenie połączenia jeśli trzeba
+  document.addEventListener('visibilitychange', ()=>{
+    if (!document.hidden){
+      document.querySelectorAll('video.bg-video').forEach(v=>{
+        if (v && v.paused) v.play().catch(()=>{});
+      });
+      // jeżeli po powrocie karta była "uśpiona", watchdog zrobi swoje,
+      // ale możemy szybciej sprawdzić czy połączenie żyje:
+      renderDiag('powrót na kartę');
     }
   });
 
   setWindCardClass(null);
-}
-
-document.addEventListener('DOMContentLoaded', initApp);
+  renderDiag();
+  connect();
+})();
 </script>
 
 </body>
