@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sterownik Wiatrowy – MQTT (public wind_speed)</title>
+  <title>Sterownik Wiatrowy – MQTT (Home Assistant Mosquitto)</title>
 
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -46,13 +46,23 @@
     /* Pasek statusu */
     #status { max-width:var(--card-w); margin:0.5rem auto; font-size:12px; color:#333; }
     #status b { font-weight:700; }
+    #status .muted { color:#666; font-weight:500; }
 
     /* QR */
     #qrcode { margin:18px auto; width:fit-content; }
     .small { font-size:12px; color:#666; margin-top:8px; }
     code { background:#f0f0f0; padding:2px 6px; border-radius:6px; }
+
+    .hint {
+      max-width: var(--card-w);
+      margin: 0 auto 10px;
+      font-size: 12px;
+      color: #444;
+    }
+    .hint code { font-weight: 600; }
   </style>
 </head>
+
 <body>
   <div id="app">
     <div class="wind-wrap">
@@ -69,25 +79,38 @@
     </div>
 
     <h1>Sterownik Wiatrowy M6</h1>
-    <div id="status">Status MQTT: <b id="mqttStatus">inicjalizacja…</b></div>
+
+    <div class="hint">
+      Broker: <code>Mosquitto (Home Assistant)</code>, WebSocket: <code>ws://192.168.8.103:1884</code>.
+      Jeśli nie działa: sprawdź login/hasło MQTT oraz konsolę (F12 → Console).
+    </div>
+
+    <div id="status">
+      Status MQTT: <b id="mqttStatus">inicjalizacja…</b>
+      <span class="muted"> | Ostatni odczyt: <span id="lastUpdate">—</span></span>
+    </div>
 
     <div class="grid">
       <div class="card">
         <span class="label">Wiatrak (energia)</span>
         <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span>
       </div>
+
       <div class="card">
         <span class="label">Moc ładowania</span>
         <span class="value"><span id="power">—</span><span class="unit">W</span></span>
       </div>
+
       <div class="card">
         <span class="label">Naładowanie baterii</span>
         <span class="value"><span id="soc">—</span><span class="unit">%</span></span>
       </div>
+
       <div class="card">
         <span class="label">Napięcie baterii</span>
         <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span>
       </div>
+
       <div class="card">
         <span class="label">Prąd ładowania</span>
         <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span>
@@ -114,9 +137,18 @@
   </div>
 
 <script>
-function initApp(){
+(function initApp(){
+  // ====== USTAWIENIA (DOPASUJ) ======
   const PREFIX = "sterownik_wiatrowy";
-  const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
+
+  // Home Assistant / Mosquitto add-on: MQTT over WebSocket (bez SSL) w LAN zwykle działa tak:
+  const WS_URL = "ws://192.168.8.103:1884";
+
+  // Wpisz lokalnie swoje dane logowania (najlepiej osobny użytkownik HA tylko do MQTT)
+  const MQTT_USERNAME = "tomek";
+  const MQTT_PASSWORD = "Tomek1425";
+  // ==================================
+
   const TOPIC_WIND_PUBLIC = `${PREFIX}/public/wind_speed`;
 
   function parseNumber(val){
@@ -126,6 +158,13 @@ function initApp(){
   function fmt1dec(n){
     if(isNaN(n)) return "—";
     return (Math.round(n*10)/10).toFixed(1).replace('.',',');
+  }
+  function nowText(){
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    const ss = String(d.getSeconds()).padStart(2,'0');
+    return `${hh}:${mm}:${ss}`;
   }
 
   const els = {
@@ -138,6 +177,7 @@ function initApp(){
     brake:document.getElementById('brake'),
     loadState:document.getElementById('loadState'),
     mqttStatus:document.getElementById('mqttStatus'),
+    lastUpdate:document.getElementById('lastUpdate'),
   };
 
   const blades = document.getElementById('blades');
@@ -149,8 +189,8 @@ function initApp(){
     let dur;
     if(lastWind != null && !isNaN(lastWind)){
       const w = Math.max(0, Math.min(25, lastWind)); // [0..25] m/s
-      const rpm = 10 + w*8;
-      dur = Math.max(0.6, 60 / rpm);
+      const rpm = 10 + w*8;                         // mapowanie "na oko"
+      dur = Math.max(0.6, 60 / rpm);                // czas obrotu
     } else {
       const p = Math.max(0, Math.min(3000, Number(lastPower)||0));
       dur = 8 - (p/3000)*(8-1.5);
@@ -159,7 +199,7 @@ function initApp(){
     blades.style.setProperty('--play', brakeState === 'ON' ? 'paused' : 'running');
   }
 
-  // Twoje dotychczasowe topic-y (jak w Twoim pliku)
+  // Twoje dotychczasowe topic-y (zostawiam jak były, wraz z alternatywami od "krzaczków")
   const TOPICS = {
     kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
     power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
@@ -173,37 +213,47 @@ function initApp(){
   const matchTopic = (incoming, candidates) =>
     (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
 
+  // Ostrzeżenie, jeśli ktoś zostawi placeholdery
+  if (MQTT_USERNAME.includes("WSTAW_") || MQTT_PASSWORD.includes("WSTAW_")) {
+    console.warn("Ustaw MQTT_USERNAME i MQTT_PASSWORD w pliku HTML (placeholdery nadal są aktywne).");
+  }
+
   const client = mqtt.connect(WS_URL, {
-    clientId: 'webdash_'+Math.random().toString(16).slice(2),
+    clientId: 'webdash_' + Math.random().toString(16).slice(2),
     clean: true,
     connectTimeout: 8000,
     reconnectPeriod: 2000,
+    username: MQTT_USERNAME,
+    password: MQTT_PASSWORD,
   });
 
   client.on('connect', ()=>{
     els.mqttStatus.textContent = 'połączono';
+    els.lastUpdate.textContent = nowText();
 
-    // Subskrypcje tylko tego, co potrzebujesz (bez #)
-    Object.values(TOPICS).flat().forEach(t=>{
-      client.subscribe(t, {qos:0});
-    });
+    // Subskrypcje potrzebnych tematów
+    Object.values(TOPICS).flat().forEach(t => client.subscribe(t, {qos:0}));
 
-    // Najważniejsze: publiczny wiatr
+    // Publiczny wiatr
     client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
     console.log("SUB:", TOPIC_WIND_PUBLIC);
   });
 
   client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
   client.on('close', ()=>{ els.mqttStatus.textContent='rozłączono'; });
-  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT (konsola)'; console.error('MQTT error:', e); });
+  client.on('error',(e)=>{
+    els.mqttStatus.textContent='błąd MQTT (sprawdź login/hasło / port)';
+    console.error('MQTT error:', e);
+  });
 
   client.on('message',(topic,payload)=>{
     const val = payload.toString();
     console.log('MQTT:', topic, '=>', val);
 
+    els.lastUpdate.textContent = nowText();
     const n = (x)=>parseNumber(x);
 
-    // ======= PUBLIC WIND (KLUCZ) =======
+    // ======= PUBLIC WIND =======
     if (topic === TOPIC_WIND_PUBLIC) {
       const v = n(val);
       if (isNaN(v)) {
@@ -216,13 +266,14 @@ function initApp(){
       recomputeRotor();
       return;
     }
-    // ====================================
+    // ===========================
 
-    if (matchTopic(topic, TOPICS.kwh))   {
+    if (matchTopic(topic, TOPICS.kwh)) {
       const v = n(val);
-      els.kwh.textContent  = isNaN(v) ? val : fmt1dec(v);
+      els.kwh.textContent = isNaN(v) ? val : fmt1dec(v);
       return;
     }
+
     if (matchTopic(topic, TOPICS.power)) {
       const v = n(val);
       els.power.textContent = isNaN(v) ? val : fmt1dec(v);
@@ -230,44 +281,53 @@ function initApp(){
       recomputeRotor();
       return;
     }
-    if (matchTopic(topic, TOPICS.soc))   {
+
+    if (matchTopic(topic, TOPICS.soc)) {
       const v = n(val);
-      els.soc.textContent  = isNaN(v) ? val : fmt1dec(v);
-      return;
-    }
-    if (matchTopic(topic, TOPICS.bat_v)) {
-      const v = n(val);
-      els.bat_v.textContent= isNaN(v) ? val : fmt1dec(v);
-      return;
-    }
-    if (matchTopic(topic, TOPICS.bat_a)) {
-      const v = n(val);
-      els.bat_a.textContent= isNaN(v) ? val : fmt1dec(v);
+      els.soc.textContent = isNaN(v) ? val : fmt1dec(v);
       return;
     }
 
-    if (matchTopic(topic, TOPICS.brake_state)){
+    if (matchTopic(topic, TOPICS.bat_v)) {
+      const v = n(val);
+      els.bat_v.textContent = isNaN(v) ? val : fmt1dec(v);
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.bat_a)) {
+      const v = n(val);
+      els.bat_a.textContent = isNaN(v) ? val : fmt1dec(v);
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.brake_state)) {
       const s = String(val).trim().toUpperCase();
       brakeState = s;
-      els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
+      els.brake.textContent = (s === 'ON') ? 'Włączony' : 'Wyłączony';
       recomputeRotor();
       return;
     }
-    if (matchTopic(topic, TOPICS.load_state)){
+
+    if (matchTopic(topic, TOPICS.load_state)) {
       const s = String(val).trim().toUpperCase();
-      els.loadState.textContent = (s==='ON') ? 'Włączone' : 'Wyłączone';
+      els.loadState.textContent = (s === 'ON') ? 'Włączone' : 'Wyłączone';
       return;
     }
   });
 
-  new QRCode(document.getElementById('qrcode'), {
-    text: window.location.href,
-    width:200,
-    height:200
-  });
-}
+  // QR do bieżącego URL strony
+  try {
+    new QRCode(document.getElementById('qrcode'), {
+      text: window.location.href,
+      width: 200,
+      height: 200
+    });
+  } catch(e) {
+    console.warn("QR init error:", e);
+  }
 
-document.addEventListener('DOMContentLoaded', initApp);
+  recomputeRotor();
+})();
 </script>
 </body>
 </html>
