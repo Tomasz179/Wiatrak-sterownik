@@ -8,115 +8,76 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
   <style>
-    :root{ --card-w:1100px; }
+    :root{
+      --card-w:1100px;
 
-    /* ====== SCENA: DZIEŃ / NOC ====== */
+      /* ====== DOPASOWANIE ŁOPAT DO TAPETY (łatwe do korekty) ======
+         Jeśli łopaty nie trafią idealnie w środek wirnika na zdjęciu,
+         ruszasz tylko te 3 wartości:
+      */
+      --rotor-left: 73.6vw;   /* pozycja X środka wirnika */
+      --rotor-top:  22.0vh;   /* pozycja Y środka wirnika */
+      --rotor-size: 38vmin;   /* rozmiar łopat (skala) */
+    }
+
     body{
       font-family: Arial, sans-serif;
       padding:20px;
       color:#111;
       min-height:100vh;
-      overflow-x:hidden;
       margin:0;
+
+      /* TAPETA (wyraźna) */
+      background-image: url("assets/wiatrak.png");
+      background-size: cover;
+      background-position: center top;
+      background-repeat: no-repeat;
       background-attachment: fixed;
-      transition: background 600ms ease;
     }
 
-    /* DZIEŃ: niebo + słońce + łąka (wyraźniej) */
-    body.day {
-      background:
-        radial-gradient(circle at 85% 12%, #fff59d 0%, #ffe082 10%, rgba(255,224,130,0.35) 16%, transparent 26%),
-        linear-gradient(to bottom,
-          #78c8f2 0%,
-          #a7ddfb 28%,
-          #e9f7ff 56%,
-          #7fcd57 57%,
-          #43ad49 100%
-        );
+    /* Mobile: lepsza płynność przewijania */
+    @media (max-width: 768px){
+      body{ background-attachment: scroll; }
     }
 
-    /* NOC: niebo + księżyc + łąka */
-    body.night {
-      background:
-        radial-gradient(circle at 85% 14%, #fffde7 0%, #fff9c4 8%, rgba(255,249,196,0.25) 15%, transparent 24%),
-        linear-gradient(to bottom,
-          #061533 0%,
-          #0f2751 35%,
-          #163667 56%,
-          #2b6a39 57%,
-          #1f4d2a 100%
-        );
+    /* Warstwa tła z animacją łopat (ZA kartami, NAD tapetą) */
+    .bg-stage{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
     }
 
-    /* ====== CHMURY jako jedna nakładka (bez prostokątów) ======
-       Robimy to na pseudo-elementach i animujemy background-position.
-       Zero przesuwanych divów => znika efekt "kafelków".
-    */
-    body::before{
-      content:"";
-      position:fixed;
-      inset:0;
-      pointer-events:none;
-      z-index:0;
-
-      /* wiele chmur jako gradienty w jednym tle */
-      background:
-        radial-gradient(ellipse at 10% 20%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.0) 60%),
-        radial-gradient(ellipse at 25% 18%, rgba(255,255,255,0.88) 0%, rgba(255,255,255,0.0) 62%),
-        radial-gradient(ellipse at 40% 22%, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.0) 60%),
-        radial-gradient(ellipse at 60% 16%, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.0) 65%),
-        radial-gradient(ellipse at 78% 24%, rgba(255,255,255,0.90) 0%, rgba(255,255,255,0.0) 60%),
-        radial-gradient(ellipse at 92% 18%, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.0) 65%);
-
-      /* rozmiar "kafla" tła chmur - duży, żeby nie było widać powtórzeń */
-      background-size: 1400px 520px;
-      background-repeat: repeat;
-
-      /* lekka miękkość */
-      filter: blur(0.2px);
-      opacity: 0.75;
-
-      /* ruch: przesuwamy tło w poziomie */
-      animation: cloudsMove 120s linear infinite;
-
-      /* wymuszenie lepszego renderingu w Chrome */
-      transform: translateZ(0);
-      will-change: background-position;
+    /* Delikatny overlay pod kartami (nie rozmywa tapety, tylko pomaga czytelności) */
+    .ui-overlay{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: linear-gradient(
+        to bottom,
+        rgba(255,255,255,0.00) 0%,
+        rgba(255,255,255,0.08) 35%,
+        rgba(255,255,255,0.18) 100%
+      );
     }
 
-    /* w nocy chmury ledwo widoczne */
-    body.night::before{ opacity: 0.16; }
-
-    @keyframes cloudsMove{
-      from { background-position: 0 0; }
-      to   { background-position: 1400px 0; }
-    }
-
-    /* gwiazdy (tylko noc) jako drugi pseudo-element */
-    body.night::after{
-      content:"";
-      position:fixed;
-      inset:0;
-      pointer-events:none;
-      z-index:0;
-      background:
-        radial-gradient(circle at 10% 20%, rgba(255,255,255,0.9) 0 1px, transparent 2px),
-        radial-gradient(circle at 30% 15%, rgba(255,255,255,0.8) 0 1px, transparent 2px),
-        radial-gradient(circle at 55% 22%, rgba(255,255,255,0.7) 0 1px, transparent 2px),
-        radial-gradient(circle at 80% 18%, rgba(255,255,255,0.9) 0 1px, transparent 2px),
-        radial-gradient(circle at 90% 30%, rgba(255,255,255,0.6) 0 1px, transparent 2px),
-        radial-gradient(circle at 18% 35%, rgba(255,255,255,0.7) 0 1px, transparent 2px),
-        radial-gradient(circle at 66% 32%, rgba(255,255,255,0.6) 0 1px, transparent 2px);
-      opacity:0.55;
-      transform: translateZ(0);
-    }
-
-    /* ===== UI ===== */
-    #app { position: relative; z-index: 1; }
+    /* UI */
+    #app{ position: relative; z-index: 2; }
 
     h1 { text-align:center; margin:8px 0 14px; }
 
-    .grid {
+    #status {
+      max-width:var(--card-w);
+      margin:0.5rem auto 1rem;
+      font-size:12px;
+      text-align:center;
+      color:#111;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+    }
+    #status b { font-weight:700; }
+
+    .grid{
       display:grid;
       grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
       gap:12px;
@@ -124,75 +85,100 @@
       margin:0 auto;
     }
 
-    .card {
-      background: rgba(255,255,255,0.93);
+    .card{
+      background: rgba(255,255,255,0.92);
       padding:15px;
       border-radius:14px;
       box-shadow:0 10px 22px rgba(0,0,0,0.14);
       backdrop-filter: blur(2px);
-      transition: transform 150ms ease, box-shadow 150ms ease, background 200ms ease;
-    }
-    .card:hover{
-      transform: translateY(-1px);
-      box-shadow:0 14px 28px rgba(0,0,0,0.16);
     }
 
-    .label { font-weight:bold; }
-    .value { float:right; font-weight:700; }
-    .unit { margin-left:4px; color:#666; font-weight:500 }
+    .label{ font-weight:bold; }
+    .value{ float:right; font-weight:700; }
+    .unit{ margin-left:4px; color:#666; font-weight:500 }
 
-    /* Wiatrak */
-    .wind-wrap{max-width:var(--card-w); margin:0 auto;}
-    .wind-svg{
-      display:block;
-      margin:0 auto 6px;
-      width:240px;
-      height:auto;
-      filter: drop-shadow(0 12px 12px rgba(0,0,0,0.25));
+    /* Karta wiatru: kolorowana */
+    .wind-card { border: 1px solid rgba(0,0,0,0.06); }
+    .wind-card.good   { background: rgba(232,245,233,0.92); }
+    .wind-card.mid    { background: rgba(255,249,196,0.92); }
+    .wind-card.high   { background: rgba(255,224,178,0.92); }
+    .wind-card.danger { background: rgba(255,205,210,0.92); }
+
+    /* ====== ANIMOWANE ŁOPATY NA TAPECIE ====== */
+    .rotor-wrap{
+      position: absolute;
+      left: var(--rotor-left);
+      top:  var(--rotor-top);
+      width: var(--rotor-size);
+      height: var(--rotor-size);
+      transform: translate(-50%, -50%);
+      transform-origin: center;
+      filter: drop-shadow(0 10px 10px rgba(0,0,0,0.35));
+      opacity: 0.85;
     }
-    .blades {
-      transform-origin: 32px 24px;
+
+    /* obrót */
+    .rotor{
+      width:100%;
+      height:100%;
+      transform-origin: 50% 50%;
       animation: spin var(--dur, 4s) linear infinite;
       animation-play-state: var(--play, running);
     }
-    @keyframes spin {
-      from { transform: rotate(0deg);}
-      to   { transform: rotate(360deg);}
+
+    @keyframes spin{
+      from{ transform: rotate(0deg); }
+      to  { transform: rotate(360deg); }
     }
 
-    /* Status */
-    #status {
-      max-width:var(--card-w);
-      margin:0.5rem auto 1rem;
-      font-size:12px;
-      text-align:center;
-    }
-    #status b { font-weight:700; }
-
-    /* Karta wiatru: kolorowana dynamicznie */
-    .wind-card { border: 1px solid rgba(0,0,0,0.06); }
-    .wind-card.good   { background: rgba(232,245,233,0.93); }
-    .wind-card.mid    { background: rgba(255,249,196,0.93); }
-    .wind-card.high   { background: rgba(255,224,178,0.93); }
-    .wind-card.danger { background: rgba(255,205,210,0.93); }
+    /* delikatne „rozmycie ruchu” przy szybszym obrocie */
+    .rotor.fast { filter: blur(0.2px); }
+    .rotor.veryfast { filter: blur(0.35px); }
   </style>
 </head>
 
-<body class="day">
-  <div id="app">
-    <div class="wind-wrap">
-      <svg class="wind-svg" viewBox="0 0 64 64">
-        <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
-        <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
-        <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
-        <g class="blades" id="blades">
-          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
-          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
-          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
+<body>
+  <!-- TŁO: animowane łopaty -->
+  <div class="bg-stage" aria-hidden="true">
+    <div class="rotor-wrap">
+      <!-- SAME ŁOPATY (bez masztu), żeby "wtopić" w zdjęcie -->
+      <svg class="rotor" id="bgRotor" viewBox="0 0 200 200">
+        <!-- piasta -->
+        <circle cx="100" cy="100" r="10" fill="rgba(230,230,230,0.95)"/>
+        <circle cx="100" cy="100" r="5" fill="rgba(180,180,180,0.95)"/>
+
+        <!-- łopaty (3 szt.) -->
+        <g fill="rgba(245,245,245,0.95)">
+          <!-- łopata 1 -->
+          <path d="M100 100
+                   C115 90, 155 78, 185 72
+                   C191 71, 194 75, 190 79
+                   C165 103, 135 120, 112 116
+                   C103 114, 99 108, 100 100Z"/>
+          <!-- łopata 2 -->
+          <path d="M100 100
+                   C98 118, 90 160, 76 188
+                   C73 194, 67 192, 67 186
+                   C67 156, 78 124, 92 108
+                   C98 102, 104 103, 100 100Z"
+                transform="rotate(120 100 100)"/>
+          <!-- łopata 3 -->
+          <path d="M100 100
+                   C115 90, 155 78, 185 72
+                   C191 71, 194 75, 190 79
+                   C165 103, 135 120, 112 116
+                   C103 114, 99 108, 100 100Z"
+                transform="rotate(240 100 100)"/>
         </g>
       </svg>
     </div>
+  </div>
 
+  <!-- Delikatny overlay pod UI -->
+  <div class="ui-overlay" aria-hidden="true"></div>
+
+  <!-- UI -->
+  <div id="app">
     <h1>Sterownik Wiatrowy M6</h1>
     <div id="status">Status MQTT: <b id="mqttStatus">inicjalizacja…</b></div>
 
@@ -201,18 +187,22 @@
         <span class="label">Wiatrak (energia)</span>
         <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span>
       </div>
+
       <div class="card">
         <span class="label">Moc ładowania</span>
         <span class="value"><span id="power">—</span><span class="unit">W</span></span>
       </div>
+
       <div class="card">
         <span class="label">Naładowanie baterii</span>
         <span class="value"><span id="soc">—</span><span class="unit">%</span></span>
       </div>
+
       <div class="card">
         <span class="label">Napięcie baterii</span>
         <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span>
       </div>
+
       <div class="card">
         <span class="label">Prąd ładowania</span>
         <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span>
@@ -241,7 +231,7 @@ function initApp(){
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
   const TOPIC_WIND_PUBLIC = `${PREFIX}/public/wind_speed`;
 
-  // progi (m/s)
+  // progi (m/s) – do kolorowania i animacji
   const STOP_AT = 0.2;
   const MID_AT  = 3.0;
   const HIGH_AT = 8.0;
@@ -256,14 +246,6 @@ function initApp(){
     return (Math.round(n*10)/10).toFixed(1).replace('.',',');
   }
 
-  // auto dzień/noc (lokalny czas przeglądarki)
-  (function setDayNight(){
-    const h = new Date().getHours();
-    const isNight = (h >= 20 || h < 6);
-    document.body.classList.toggle('night', isNight);
-    document.body.classList.toggle('day', !isNight);
-  })();
-
   const els = {
     kwh:  document.getElementById('kwh'),
     power:document.getElementById('power'),
@@ -275,9 +257,9 @@ function initApp(){
     brake:document.getElementById('brake'),
     loadState:document.getElementById('loadState'),
     mqttStatus:document.getElementById('mqttStatus'),
+    rotor: document.getElementById('bgRotor'),
   };
 
-  const blades = document.getElementById('blades');
   let brakeState = 'OFF';
   let lastWind = null;
   let lastPower = null;
@@ -291,27 +273,25 @@ function initApp(){
     else els.windCard.classList.add('danger');
   }
 
-  function recomputeRotor(){
-    if (brakeState === 'ON') {
-      blades.style.setProperty('--play', 'paused');
+  function setRotorSpeedFromWind(w){
+    // hamulec albo brak wiatru -> stop
+    if (brakeState === 'ON' || w == null || isNaN(w) || w < STOP_AT) {
+      els.rotor.style.setProperty('--play', 'paused');
+      els.rotor.classList.remove('fast','veryfast');
       return;
     }
-    if(lastWind != null && !isNaN(lastWind)){
-      if(lastWind < STOP_AT){
-        blades.style.setProperty('--play', 'paused');
-        return;
-      }
-      const w = Math.max(0, Math.min(25, lastWind));
-      const rpm = 10 + w*8;
-      const dur = Math.max(0.6, 60 / rpm);
-      blades.style.setProperty('--dur', dur.toFixed(2) + 's');
-      blades.style.setProperty('--play', 'running');
-      return;
-    }
-    const p = Math.max(0, Math.min(3000, Number(lastPower)||0));
-    const dur = 8 - (p/3000)*(8-1.5);
-    blades.style.setProperty('--dur', Math.max(1.5, dur).toFixed(2) + 's');
-    blades.style.setProperty('--play', 'running');
+
+    // mapowanie wiatru na czas obrotu (dur)
+    const ww = Math.max(0, Math.min(25, w)); // 0..25 m/s
+    const rpm = 6 + ww * 6.5;               // dopasowane "pod oko"
+    const dur = Math.max(0.55, 60 / rpm);   // sekundy na obrót
+
+    els.rotor.style.setProperty('--dur', dur.toFixed(2) + 's');
+    els.rotor.style.setProperty('--play', 'running');
+
+    // lekkie rozmycie przy dużych obrotach
+    els.rotor.classList.toggle('fast', ww >= 10);
+    els.rotor.classList.toggle('veryfast', ww >= 16);
   }
 
   const TOPICS = {
@@ -326,6 +306,11 @@ function initApp(){
 
   const matchTopic = (incoming, candidates) =>
     (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
+
+  const noteNum = (val) => {
+    const v = parseNumber(val);
+    return isNaN(v) ? null : v;
+  };
 
   const client = mqtt.connect(WS_URL, {
     clientId: 'webdash_'+Math.random().toString(16).slice(2),
@@ -346,52 +331,44 @@ function initApp(){
 
   client.on('message',(topic,payload)=>{
     const val = payload.toString();
-    const n = (x)=>parseNumber(x);
 
     if (topic === TOPIC_WIND_PUBLIC) {
-      const v = n(val);
-      if (isNaN(v)) {
-        lastWind = null;
-        els.wind.textContent = "—";
-        setWindCardClass(null);
-      } else {
-        lastWind = v;
-        els.wind.textContent = fmt1dec(v);
-        setWindCardClass(v);
-      }
-      recomputeRotor();
+      const v = noteNum(val);
+      lastWind = v;
+      els.wind.textContent = (v == null) ? "—" : fmt1dec(v);
+      setWindCardClass(v);
+      setRotorSpeedFromWind(v);
       return;
     }
 
     if (matchTopic(topic, TOPICS.kwh)) {
-      const v = n(val);
-      els.kwh.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      const v = noteNum(val);
+      els.kwh.textContent = (v == null) ? "—" : fmt1dec(v);
       return;
     }
 
     if (matchTopic(topic, TOPICS.power)) {
-      const v = n(val);
-      lastPower = isNaN(v) ? null : v;
-      els.power.textContent = isNaN(v) ? "—" : fmt1dec(v);
-      recomputeRotor();
+      const v = noteNum(val);
+      lastPower = v;
+      els.power.textContent = (v == null) ? "—" : fmt1dec(v);
       return;
     }
 
     if (matchTopic(topic, TOPICS.soc)) {
-      const v = n(val);
-      els.soc.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      const v = noteNum(val);
+      els.soc.textContent = (v == null) ? "—" : fmt1dec(v);
       return;
     }
 
     if (matchTopic(topic, TOPICS.bat_v)) {
-      const v = n(val);
-      els.bat_v.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      const v = noteNum(val);
+      els.bat_v.textContent = (v == null) ? "—" : fmt1dec(v);
       return;
     }
 
     if (matchTopic(topic, TOPICS.bat_a)) {
-      const v = n(val);
-      els.bat_a.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      const v = noteNum(val);
+      els.bat_a.textContent = (v == null) ? "—" : fmt1dec(v);
       return;
     }
 
@@ -399,7 +376,7 @@ function initApp(){
       const s = String(val).trim().toUpperCase();
       brakeState = s;
       els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
-      recomputeRotor();
+      setRotorSpeedFromWind(lastWind);
       return;
     }
 
@@ -410,8 +387,9 @@ function initApp(){
     }
   });
 
+  // start
   setWindCardClass(null);
-  recomputeRotor();
+  setRotorSpeedFromWind(null);
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
