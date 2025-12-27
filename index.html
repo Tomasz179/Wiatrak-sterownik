@@ -94,8 +94,9 @@
       </div>
 
       <div class="card">
-        <span class="label">Prędkość wiatru (public)</span>
+        <span class="label">Prędkość wiatru</span>
         <span class="value"><span id="wind">—</span><span class="unit">m/s</span></span>
+      </div>
 
       <div class="card">
         <span class="label">Hamulec turbiny</span>
@@ -146,7 +147,7 @@ function initApp(){
   function recomputeRotor(){
     let dur;
     if(lastWind != null && !isNaN(lastWind)){
-      const w = Math.max(0, Math.min(25, lastWind)); // [0..25] m/s
+      const w = Math.max(0, Math.min(25, lastWind));
       const rpm = 10 + w*8;
       dur = Math.max(0.6, 60 / rpm);
     } else {
@@ -185,71 +186,37 @@ function initApp(){
     });
 
     client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
-    console.log("SUB:", TOPIC_WIND_PUBLIC);
   });
 
   client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
   client.on('close', ()=>{ els.mqttStatus.textContent='rozłączono'; });
-  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT (konsola)'; console.error('MQTT error:', e); });
+  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT'; console.error(e); });
 
   client.on('message',(topic,payload)=>{
     const val = payload.toString();
-    console.log('MQTT:', topic, '=>', val);
-
     const n = (x)=>parseNumber(x);
 
     if (topic === TOPIC_WIND_PUBLIC) {
       const v = n(val);
-      if (isNaN(v)) {
-        lastWind = null;
-        els.wind.textContent = "—";
-      } else {
-        lastWind = v;
-        els.wind.textContent = fmt1dec(v);
-      }
+      lastWind = isNaN(v) ? null : v;
+      els.wind.textContent = isNaN(v) ? "—" : fmt1dec(v);
       recomputeRotor();
       return;
     }
 
-    if (matchTopic(topic, TOPICS.kwh))   {
-      const v = n(val);
-      els.kwh.textContent  = isNaN(v) ? val : fmt1dec(v);
-      return;
-    }
-    if (matchTopic(topic, TOPICS.power)) {
-      const v = n(val);
-      els.power.textContent = isNaN(v) ? val : fmt1dec(v);
-      lastPower = v;
-      recomputeRotor();
-      return;
-    }
-    if (matchTopic(topic, TOPICS.soc))   {
-      const v = n(val);
-      els.soc.textContent  = isNaN(v) ? val : fmt1dec(v);
-      return;
-    }
-    if (matchTopic(topic, TOPICS.bat_v)) {
-      const v = n(val);
-      els.bat_v.textContent= isNaN(v) ? val : fmt1dec(v);
-      return;
-    }
-    if (matchTopic(topic, TOPICS.bat_a)) {
-      const v = n(val);
-      els.bat_a.textContent= isNaN(v) ? val : fmt1dec(v);
-      return;
-    }
+    if (matchTopic(topic, TOPICS.kwh))   els.kwh.textContent = fmt1dec(n(val));
+    if (matchTopic(topic, TOPICS.power)) { lastPower = n(val); els.power.textContent = fmt1dec(lastPower); recomputeRotor(); }
+    if (matchTopic(topic, TOPICS.soc))   els.soc.textContent = fmt1dec(n(val));
+    if (matchTopic(topic, TOPICS.bat_v)) els.bat_v.textContent = fmt1dec(n(val));
+    if (matchTopic(topic, TOPICS.bat_a)) els.bat_a.textContent = fmt1dec(n(val));
 
     if (matchTopic(topic, TOPICS.brake_state)){
-      const s = String(val).trim().toUpperCase();
-      brakeState = s;
-      els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
+      brakeState = val.toUpperCase();
+      els.brake.textContent = brakeState === 'ON' ? 'Włączony' : 'Wyłączony';
       recomputeRotor();
-      return;
     }
     if (matchTopic(topic, TOPICS.load_state)){
-      const s = String(val).trim().toUpperCase();
-      els.loadState.textContent = (s==='ON') ? 'Włączone' : 'Wyłączone';
-      return;
+      els.loadState.textContent = val.toUpperCase() === 'ON' ? 'Włączone' : 'Wyłączone';
     }
   });
 
@@ -264,4 +231,3 @@ document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
-
