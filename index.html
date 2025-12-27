@@ -10,141 +10,418 @@
   <style>
     :root{ --card-w:1100px; }
 
-    /* ===== TŁO: NIEBO + SŁOŃCE + CHMURY + ŁĄKA ===== */
+    /* ===== SCENA: DZIEŃ / NOC (przełączane klasą na body) ===== */
     body{
       font-family: Arial, sans-serif;
       padding:20px;
       color:#111;
       min-height:100vh;
+      overflow-x:hidden;
+      background-attachment: fixed;
+      transition: background 600ms ease;
+    }
+
+    /* DZIEŃ: niebo + słońce + łąka */
+    body.day {
       background:
-        /* chmury */
-        radial-gradient(circle at 20% 20%, rgba(255,255,255,0.9) 0%, transparent 40%),
-        radial-gradient(circle at 45% 18%, rgba(255,255,255,0.8) 0%, transparent 45%),
-        radial-gradient(circle at 70% 22%, rgba(255,255,255,0.85) 0%, transparent 42%),
+        /* chmury (statyczne tło) */
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,0.9) 0%, transparent 42%),
+        radial-gradient(circle at 45% 18%, rgba(255,255,255,0.8) 0%, transparent 48%),
+        radial-gradient(circle at 70% 22%, rgba(255,255,255,0.85) 0%, transparent 45%),
 
         /* słońce */
-        radial-gradient(circle at 85% 12%, #fff59d 0%, #ffe082 8%, rgba(255,224,130,0.4) 14%, transparent 22%),
+        radial-gradient(circle at 85% 12%, #fff59d 0%, #ffe082 9%, rgba(255,224,130,0.45) 15%, transparent 24%),
 
-        /* niebo */
+        /* niebo + linia ziemi */
         linear-gradient(
           to bottom,
           #8fd3f4 0%,
-          #b3e5fc 35%,
+          #b3e5fc 34%,
           #e1f5fe 55%,
           #7ec850 56%,
           #4caf50 100%
         );
-      background-attachment: fixed;
     }
+
+    /* NOC: ciemne niebo + księżyc + gwiazdy + łąka ciemniejsza */
+    body.night {
+      color:#111;
+      background:
+        /* gwiazdy */
+        radial-gradient(circle at 10% 20%, rgba(255,255,255,0.9) 0 1px, transparent 2px),
+        radial-gradient(circle at 30% 15%, rgba(255,255,255,0.8) 0 1px, transparent 2px),
+        radial-gradient(circle at 55% 22%, rgba(255,255,255,0.7) 0 1px, transparent 2px),
+        radial-gradient(circle at 80% 18%, rgba(255,255,255,0.9) 0 1px, transparent 2px),
+        radial-gradient(circle at 90% 30%, rgba(255,255,255,0.6) 0 1px, transparent 2px),
+
+        /* księżyc */
+        radial-gradient(circle at 85% 14%, #fffde7 0%, #fff9c4 7%, rgba(255,249,196,0.35) 14%, transparent 22%),
+
+        /* niebo + ziemia */
+        linear-gradient(
+          to bottom,
+          #0b1b3a 0%,
+          #132a56 35%,
+          #1d3a6b 55%,
+          #2f6b3a 56%,
+          #1f4d2a 100%
+        );
+    }
+
+    /* ===== RUCHOME CHMURY (nakładka) ===== */
+    .clouds {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.75;
+      mix-blend-mode: screen;
+    }
+    body.night .clouds {
+      opacity: 0.18;              /* w nocy ledwo widoczne */
+      mix-blend-mode: normal;
+    }
+    .cloud {
+      position: absolute;
+      top: 10%;
+      width: 520px;
+      height: 180px;
+      background:
+        radial-gradient(circle at 18% 60%, rgba(255,255,255,0.85) 0%, transparent 55%),
+        radial-gradient(circle at 40% 45%, rgba(255,255,255,0.75) 0%, transparent 60%),
+        radial-gradient(circle at 65% 58%, rgba(255,255,255,0.8) 0%, transparent 58%),
+        radial-gradient(circle at 82% 55%, rgba(255,255,255,0.7) 0%, transparent 60%);
+      filter: blur(0.2px);
+      transform: translateX(-650px);
+      animation: drift linear infinite;
+    }
+    .cloud.c1 { top: 8%;  left: -40%; animation-duration: 85s; opacity: 0.80; }
+    .cloud.c2 { top: 15%; left: -60%; animation-duration: 120s; opacity: 0.65; transform: translateX(-900px) scale(0.85); }
+    .cloud.c3 { top: 22%; left: -55%; animation-duration: 95s; opacity: 0.55; transform: translateX(-800px) scale(0.70); }
+
+    @keyframes drift {
+      from { transform: translateX(-900px); }
+      to   { transform: translateX(calc(100vw + 900px)); }
+    }
+
+    /* ===== UI ===== */
+    #app { position: relative; z-index: 1; }
 
     h1 { text-align:center; margin:8px 0 14px; }
 
-    .grid{
+    .grid {
       display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+      grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
       gap:12px;
       max-width:var(--card-w);
       margin:0 auto;
     }
 
-    .card{
-      background:rgba(255,255,255,0.95);
+    .card {
+      background: rgba(255,255,255,0.92);
       padding:15px;
       border-radius:14px;
-      box-shadow:0 6px 18px rgba(0,0,0,0.12);
+      box-shadow:0 10px 22px rgba(0,0,0,0.14);
       backdrop-filter: blur(2px);
+      transition: transform 150ms ease, box-shadow 150ms ease, background 200ms ease;
+    }
+    .card:hover{
+      transform: translateY(-1px);
+      box-shadow:0 14px 28px rgba(0,0,0,0.16);
     }
 
-    .label{font-weight:bold;}
-    .value{float:right;font-weight:700;}
-    .unit{margin-left:4px;color:#666;font-weight:500;}
+    .label { font-weight:bold; }
+    .value { float:right; font-weight:700; }
+    .unit { margin-left:4px; color:#666; font-weight:500 }
 
     /* Wiatrak */
-    .wind-wrap{max-width:var(--card-w);margin:0 auto;}
-    .wind-svg{display:block;margin:0 auto 6px;width:240px;height:auto;}
-    .blades{
-      transform-origin:32px 24px;
-      animation:spin var(--dur,4s) linear infinite;
-      animation-play-state:var(--play,running);
+    .wind-wrap{max-width:var(--card-w); margin:0 auto;}
+    .wind-svg{
+      display:block;
+      margin:0 auto 6px;
+      width:240px;
+      height:auto;
+      /* cień dla "osadzenia" */
+      filter: drop-shadow(0 12px 12px rgba(0,0,0,0.25));
     }
-    @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+    .blades {
+      transform-origin: 32px 24px;
+      animation: spin var(--dur, 4s) linear infinite;
+      animation-play-state: var(--play, running);
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg);}
+      to   { transform: rotate(360deg);}
+    }
 
     /* Status */
-    #status{
+    #status {
       max-width:var(--card-w);
       margin:0.5rem auto 1rem;
       font-size:12px;
       text-align:center;
     }
-    #status b{font-weight:700;}
+    #status b { font-weight:700; }
+
+    /* Karta wiatru: kolorowana dynamicznie */
+    .wind-card { border: 1px solid rgba(0,0,0,0.06); }
+    .wind-card.good   { background: rgba(232,245,233,0.92); } /* zielony */
+    .wind-card.mid    { background: rgba(255,249,196,0.92); } /* żółty */
+    .wind-card.high   { background: rgba(255,224,178,0.92); } /* pomarańcz */
+    .wind-card.danger { background: rgba(255,205,210,0.92); } /* czerwony */
   </style>
 </head>
 
-<body>
-<div id="app">
-
-  <div class="wind-wrap">
-    <svg class="wind-svg" viewBox="0 0 64 64">
-      <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
-      <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
-      <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
-      <g class="blades" id="blades">
-        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
-        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
-        <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
-      </g>
-    </svg>
+<body class="day">
+  <!-- chmury -->
+  <div class="clouds" aria-hidden="true">
+    <div class="cloud c1"></div>
+    <div class="cloud c2"></div>
+    <div class="cloud c3"></div>
   </div>
 
-  <h1>Sterownik Wiatrowy M6</h1>
-  <div id="status">Status MQTT: <b id="mqttStatus">inicjalizacja…</b></div>
+  <div id="app">
+    <div class="wind-wrap">
+      <svg class="wind-svg" viewBox="0 0 64 64">
+        <path d="M32 28 L28 62 L36 62 Z" fill="#2c3e50"/>
+        <rect x="18" y="62" width="28" height="2" rx="1" fill="#7f8c8d"/>
+        <circle cx="32" cy="24" r="4.2" fill="#2c3e50"/>
+        <g class="blades" id="blades">
+          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9"/>
+          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(120 32 24)"/>
+          <polygon points="32,24 30,24 27,-8 37,-8 34,24" fill="#2980b9" transform="rotate(240 32 24)"/>
+        </g>
+      </svg>
+    </div>
 
-  <div class="grid">
-    <div class="card"><span class="label">Wiatrak (energia)</span><span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span></div>
-    <div class="card"><span class="label">Moc ładowania</span><span class="value"><span id="power">—</span><span class="unit">W</span></span></div>
-    <div class="card"><span class="label">Naładowanie baterii</span><span class="value"><span id="soc">—</span><span class="unit">%</span></span></div>
-    <div class="card"><span class="label">Napięcie baterii</span><span class="value"><span id="bat_v">—</span><span class="unit">V</span></span></div>
-    <div class="card"><span class="label">Prąd ładowania</span><span class="value"><span id="bat_a">—</span><span class="unit">A</span></span></div>
-    <div class="card"><span class="label">Prędkość wiatru</span><span class="value"><span id="wind">—</span><span class="unit">m/s</span></span></div>
-    <div class="card"><span class="label">Hamulec turbiny</span><span class="value" id="brake">—</span></div>
-    <div class="card"><span class="label">Wyjście LOAD</span><span class="value" id="loadState">—</span></div>
+    <h1>Sterownik Wiatrowy M6</h1>
+    <div id="status">Status MQTT: <b id="mqttStatus">inicjalizacja…</b></div>
+
+    <div class="grid">
+      <div class="card">
+        <span class="label">Wiatrak (energia)</span>
+        <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Moc ładowania</span>
+        <span class="value"><span id="power">—</span><span class="unit">W</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Naładowanie baterii</span>
+        <span class="value"><span id="soc">—</span><span class="unit">%</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Napięcie baterii</span>
+        <span class="value"><span id="bat_v">—</span><span class="unit">V</span></span>
+      </div>
+      <div class="card">
+        <span class="label">Prąd ładowania</span>
+        <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span>
+      </div>
+
+      <div class="card wind-card" id="windCard">
+        <span class="label">Prędkość wiatru</span>
+        <span class="value"><span id="wind">—</span><span class="unit">m/s</span></span>
+      </div>
+
+      <div class="card">
+        <span class="label">Hamulec turbiny</span>
+        <span class="value" id="brake">—</span>
+      </div>
+
+      <div class="card">
+        <span class="label">Wyjście LOAD</span>
+        <span class="value" id="loadState">—</span>
+      </div>
+    </div>
   </div>
-
-</div>
 
 <script>
 function initApp(){
-  const PREFIX="sterownik_wiatrowy";
-  const WS_URL="wss://broker.hivemq.com:8884/mqtt";
-  const TOPIC_WIND_PUBLIC=`${PREFIX}/public/wind_speed`;
+  const PREFIX = "sterownik_wiatrowy";
+  const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
+  const TOPIC_WIND_PUBLIC = `${PREFIX}/public/wind_speed`;
 
-  const els={
-    kwh:kwh,power:power,soc:soc,bat_v:bat_v,bat_a:bat_a,
-    wind:wind,brake:brake,loadState:loadState,mqttStatus:mqttStatus
-  };
+  // progi (m/s)
+  const STOP_AT = 0.2;     // poniżej -> stop animacji
+  const MID_AT  = 3.0;     // żółty
+  const HIGH_AT = 8.0;     // pomarańcz
+  const DANG_AT = 15.0;    // czerwony
 
-  const blades=document.getElementById('blades');
-  let brakeState='OFF',lastWind=null,lastPower=null;
-
-  const fmt=n=>isNaN(n)?"—":(Math.round(n*10)/10).toFixed(1).replace('.',',');
-
-  function rotor(){
-    let d=lastWind!=null?Math.max(0.6,60/(10+lastWind*8)):4;
-    blades.style.setProperty('--dur',d+'s');
-    blades.style.setProperty('--play',brakeState==='ON'?'paused':'running');
+  function parseNumber(val){
+    const m = String(val).match(/-?\d+(?:[.,]\d+)?/);
+    return m ? parseFloat(m[0].replace(',', '.')) : NaN;
+  }
+  function fmt1dec(n){
+    if(isNaN(n)) return "—";
+    return (Math.round(n*10)/10).toFixed(1).replace('.',',');
   }
 
-  const client=mqtt.connect(WS_URL,{clientId:'web_'+Math.random().toString(16).slice(2)});
-  client.on('connect',()=>{mqttStatus.textContent='połączono';client.subscribe(TOPIC_WIND_PUBLIC);});
-  client.on('message',(t,p)=>{
-    if(t===TOPIC_WIND_PUBLIC){
-      lastWind=parseFloat(p)||null;
-      wind.textContent=fmt(lastWind);
-      rotor();
+  // auto dzień/noc (lokalny czas przeglądarki)
+  (function setDayNight(){
+    const h = new Date().getHours();
+    const isNight = (h >= 20 || h < 6);
+    document.body.classList.toggle('night', isNight);
+    document.body.classList.toggle('day', !isNight);
+  })();
+
+  const els = {
+    kwh:  document.getElementById('kwh'),
+    power:document.getElementById('power'),
+    soc:  document.getElementById('soc'),
+    bat_v:document.getElementById('bat_v'),
+    bat_a:document.getElementById('bat_a'),
+    wind: document.getElementById('wind'),
+    windCard: document.getElementById('windCard'),
+    brake:document.getElementById('brake'),
+    loadState:document.getElementById('loadState'),
+    mqttStatus:document.getElementById('mqttStatus'),
+  };
+
+  const blades = document.getElementById('blades');
+  let brakeState = 'OFF';
+  let lastWind = null;
+  let lastPower = null;
+
+  function setWindCardClass(w){
+    els.windCard.classList.remove('good','mid','high','danger');
+    if(w == null || isNaN(w)) return;
+    if(w < MID_AT) els.windCard.classList.add('good');
+    else if(w < HIGH_AT) els.windCard.classList.add('mid');
+    else if(w < DANG_AT) els.windCard.classList.add('high');
+    else els.windCard.classList.add('danger');
+  }
+
+  function recomputeRotor(){
+    // jeśli hamulec ON -> stop
+    if (brakeState === 'ON') {
+      blades.style.setProperty('--play', 'paused');
+      return;
+    }
+
+    // jeśli wiatr jest -> na wiatr
+    if(lastWind != null && !isNaN(lastWind)){
+      if(lastWind < STOP_AT){
+        blades.style.setProperty('--play', 'paused');
+        return;
+      }
+      const w = Math.max(0, Math.min(25, lastWind)); // [0..25]
+      const rpm = 10 + w*8;
+      const dur = Math.max(0.6, 60 / rpm);
+      blades.style.setProperty('--dur', dur.toFixed(2) + 's');
+      blades.style.setProperty('--play', 'running');
+      return;
+    }
+
+    // fallback na moc (gdy brak wiatru)
+    const p = Math.max(0, Math.min(3000, Number(lastPower)||0));
+    const dur = 8 - (p/3000)*(8-1.5);
+    blades.style.setProperty('--dur', Math.max(1.5, dur).toFixed(2) + 's');
+    blades.style.setProperty('--play', 'running');
+  }
+
+  const TOPICS = {
+    kwh:   [`${PREFIX}/sensor/wiatrak_kwh/state`],
+    power: [`${PREFIX}/sensor/moc__adowania/state`, `${PREFIX}/sensor/moc___adowania/state`],
+    soc:   [`${PREFIX}/sensor/procent_na__adowania_baterii/state`, `${PREFIX}/sensor/procent_na_adowania_baterii/state`],
+    bat_v: [`${PREFIX}/sensor/napi_cie_baterii/state`, `${PREFIX}/sensor/napi__cie_baterii/state`],
+    bat_a: [`${PREFIX}/sensor/pr_d__adowania/state`, `${PREFIX}/sensor/pr__d___adowania/state`],
+    brake_state: [`${PREFIX}/switch/hamulec_turbiny/state`],
+    load_state:  [`${PREFIX}/switch/wyjscie_load/state`, `${PREFIX}/switch/wyj__cie_load/state`],
+  };
+
+  const matchTopic = (incoming, candidates) =>
+    (Array.isArray(candidates)?candidates:[candidates]).includes(incoming);
+
+  const client = mqtt.connect(WS_URL, {
+    clientId: 'webdash_'+Math.random().toString(16).slice(2),
+    clean: true,
+    connectTimeout: 8000,
+    reconnectPeriod: 2000,
+  });
+
+  client.on('connect', ()=>{
+    els.mqttStatus.textContent = 'połączono';
+    Object.values(TOPICS).flat().forEach(t=>client.subscribe(t, {qos:0}));
+    client.subscribe(TOPIC_WIND_PUBLIC, {qos:0});
+  });
+
+  client.on('reconnect', ()=>{ els.mqttStatus.textContent='ponowne łączenie…'; });
+  client.on('close', ()=>{ els.mqttStatus.textContent='rozłączono'; });
+  client.on('error',(e)=>{ els.mqttStatus.textContent='błąd MQTT (konsola)'; console.error('MQTT error:', e); });
+
+  client.on('message',(topic,payload)=>{
+    const val = payload.toString();
+    const n = (x)=>parseNumber(x);
+
+    if (topic === TOPIC_WIND_PUBLIC) {
+      const v = n(val);
+      if (isNaN(v)) {
+        lastWind = null;
+        els.wind.textContent = "—";
+        setWindCardClass(null);
+      } else {
+        lastWind = v;
+        els.wind.textContent = fmt1dec(v);
+        setWindCardClass(v);
+      }
+      recomputeRotor();
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.kwh)) {
+      const v = n(val);
+      els.kwh.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.power)) {
+      const v = n(val);
+      lastPower = isNaN(v) ? null : v;
+      els.power.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      recomputeRotor();
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.soc)) {
+      const v = n(val);
+      els.soc.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.bat_v)) {
+      const v = n(val);
+      els.bat_v.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.bat_a)) {
+      const v = n(val);
+      els.bat_a.textContent = isNaN(v) ? "—" : fmt1dec(v);
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.brake_state)) {
+      const s = String(val).trim().toUpperCase();
+      brakeState = s;
+      els.brake.textContent = (s==='ON') ? 'Włączony' : 'Wyłączony';
+      recomputeRotor();
+      return;
+    }
+
+    if (matchTopic(topic, TOPICS.load_state)) {
+      const s = String(val).trim().toUpperCase();
+      els.loadState.textContent = (s==='ON') ? 'Włączone' : 'Wyłączone';
+      return;
     }
   });
+
+  // start
+  setWindCardClass(null);
+  recomputeRotor();
 }
-document.addEventListener('DOMContentLoaded',initApp);
+
+document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
