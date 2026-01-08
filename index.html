@@ -112,7 +112,6 @@
   </div>
 
   <div class="grid">
-
     <div class="card">
       <span class="label">Energia wiatraka</span>
       <span class="value"><span id="kwh">—</span><span class="unit">kWh</span></span>
@@ -137,13 +136,12 @@
       <span class="label">Prędkość wiatru</span>
       <span class="value"><span id="wind">—</span><span class="unit">m/s</span></span>
     </div>
-
   </div>
 </div>
 
 <script>
 (() => {
-  const PREFIX = "sterownik_wiatrowy";
+  const PREFIX = "sterownik_wiatrowy/sterownik-wiatrak";
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
   const TOPIC_WIND = `${PREFIX}/public/wind_speed`;
 
@@ -158,13 +156,6 @@
     windCard: document.getElementById('windCard'),
     mqttStatus: document.getElementById('mqttStatus'),
     diag: document.getElementById('diag'),
-  };
-
-  const TOPICS = {
-    kwh:   `${PREFIX}/sensor/wiatrak_kwh/state`,
-    power: `${PREFIX}/sensor/moc_wiatrak/state`,
-    bat_v: `${PREFIX}/sensor/napi_cie_baterii/state`,
-    bat_a: `${PREFIX}/sensor/pr_d_wiatrak/state`,
   };
 
   function num(v){
@@ -186,29 +177,29 @@
     el.diag.innerHTML=` | msg: <b>${msg}</b> | last: <b>${last?new Date(last).toLocaleTimeString():"—"}</b>`;
   };
 
-  const client=mqtt.connect(WS_URL,{clientId:"web_"+Math.random().toString(16).slice(2)});
+  const client = mqtt.connect(WS_URL,{clientId:"web_"+Math.random().toString(16).slice(2)});
 
   client.on('connect',()=>{
     el.mqttStatus.textContent="połączono";
-    [...Object.values(TOPICS),TOPIC_WIND].forEach(t=>client.subscribe(t));
+    client.subscribe(`${PREFIX}/sensor/#`);
+    client.subscribe(TOPIC_WIND);
   });
 
-  client.on('message',(t,p)=>{
+  client.on('message',(topic,payload)=>{
     msg++; last=Date.now(); diag();
-    const v=num(p.toString());
-    if(t===TOPIC_WIND){ el.wind.textContent=fmt(v); windColor(v); }
-    if(t===TOPICS.kwh) el.kwh.textContent=fmt(v);
-    if(t===TOPICS.power) el.power.textContent=fmt(v);
-    if(t===TOPICS.bat_v) el.bat_v.textContent=fmt(v);
-    if(t===TOPICS.bat_a) el.bat_a.textContent=fmt(v);
+    const val = num(payload.toString());
+
+    if(topic.includes('wiatrak_kwh')) el.kwh.textContent = fmt(val);
+    else if(topic.includes('moc_wiatrak')) el.power.textContent = fmt(val);
+    else if(topic.includes('napiecie_baterii')) el.bat_v.textContent = fmt(val);
+    else if(topic.includes('prad_wiatrak')) el.bat_a.textContent = fmt(val);
+    else if(topic===TOPIC_WIND){ el.wind.textContent = fmt(val); windColor(val); }
   });
 
   client.on('offline',()=>el.mqttStatus.textContent="offline");
-  client.on('error',()=>el.mqttStatus.textContent="błąd");
+  client.on('error',()=>el.mqttStatus.textContent="błąd MQTT");
 })();
 </script>
 
 </body>
 </html>
-
-
