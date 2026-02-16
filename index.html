@@ -133,7 +133,11 @@
       <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span>
     </div>
 
-    <!-- NOWA KARTA: OBROTY -->
+    <div class="card">
+      <span class="label">Napięcie wiatraka</span>
+      <span class="value"><span id="wind_v">—</span><span class="unit">V</span></span>
+    </div>
+
     <div class="card">
       <span class="label">Obroty turbiny</span>
       <span class="value"><span id="rpm">—</span><span class="unit">RPM</span></span>
@@ -151,8 +155,11 @@
 (() => {
   const PREFIX = "sterownik_wiatrowy";
   const WS_URL = "wss://broker.hivemq.com:8884/mqtt";
+
+  // public
   const TOPIC_WIND = `${PREFIX}/public/wind_speed`;
 
+  // progi kolorowania karty prędkości wiatru
   const MID_AT=3, HIGH_AT=8, DANG_AT=15;
 
   const el = {
@@ -160,19 +167,24 @@
     power: document.getElementById('power'),
     bat_v: document.getElementById('bat_v'),
     bat_a: document.getElementById('bat_a'),
-    rpm: document.getElementById('rpm'),     // <-- NOWE
+    wind_v: document.getElementById('wind_v'),
+    rpm: document.getElementById('rpm'),
     wind: document.getElementById('wind'),
     windCard: document.getElementById('windCard'),
     mqttStatus: document.getElementById('mqttStatus'),
     diag: document.getElementById('diag'),
   };
 
+  // Uwaga: u Ciebie już są podwójne podkreślenia zamiast polskich znaków,
+  // więc dla spójności daję "napie__cie_wiatrak".
+  // Jeśli topic masz inny – podmień tylko tutaj.
   const TOPICS = {
-    kwh:   `${PREFIX}/sensor/wiatrak_kwh/state`,
-    power: `${PREFIX}/sensor/moc_wiatrak/state`,
-    bat_v: `${PREFIX}/sensor/napi__cie_baterii/state`,
-    bat_a: `${PREFIX}/sensor/pr__d_wiatrak/state`,
-    rpm:   `${PREFIX}/sensor/obroty_wiatraka/state`, // <-- NOWE (podmień jeśli masz inny topic)
+    kwh:    `${PREFIX}/sensor/wiatrak_kwh/state`,
+    power:  `${PREFIX}/sensor/moc_wiatrak/state`,
+    bat_v:  `${PREFIX}/sensor/napi__cie_baterii/state`,
+    bat_a:  `${PREFIX}/sensor/pr__d_wiatrak/state`,
+    wind_v: `${PREFIX}/sensor/napi__cie_wiatrak/state`,
+    rpm:    `${PREFIX}/sensor/obroty_wiatraka/state`,
   };
 
   function num(v){
@@ -180,12 +192,11 @@
     return m?parseFloat(m[0].replace(',','.')):NaN;
   }
 
-  // RPM zwykle bez części dziesiętnych, ale zostawiamy uniwersalnie:
+  // Uniwersalny format 1 miejsce po przecinku (zgodnie z resztą UI)
   const fmt=n=>isNaN(n)?"—":n.toFixed(1).replace('.',',');
 
-  // Jeśli chcesz RPM jako liczba całkowita, zamień linijkę wyżej na:
+  // Jeśli chcesz RPM jako całkowite:
   // const fmtRpm=n=>isNaN(n)?"—":String(Math.round(n));
-  // i użyj fmtRpm przy el.rpm
 
   function windColor(w){
     el.windCard.className="card wind-card";
@@ -212,11 +223,13 @@
     const v=num(p.toString());
 
     if(t===TOPIC_WIND){ el.wind.textContent=fmt(v); windColor(v); }
-    if(t===TOPICS.kwh)   el.kwh.textContent=fmt(v);
-    if(t===TOPICS.power) el.power.textContent=fmt(v);
-    if(t===TOPICS.bat_v) el.bat_v.textContent=fmt(v);
-    if(t===TOPICS.bat_a) el.bat_a.textContent=fmt(v);
-    if(t===TOPICS.rpm)   el.rpm.textContent=fmt(v); // <-- NOWE
+
+    if(t===TOPICS.kwh)    el.kwh.textContent=fmt(v);
+    if(t===TOPICS.power)  el.power.textContent=fmt(v);
+    if(t===TOPICS.bat_v)  el.bat_v.textContent=fmt(v);
+    if(t===TOPICS.bat_a)  el.bat_a.textContent=fmt(v);
+    if(t===TOPICS.wind_v) el.wind_v.textContent=fmt(v);
+    if(t===TOPICS.rpm)    el.rpm.textContent=fmt(v); // lub fmtRpm(v)
   });
 
   client.on('offline',()=>el.mqttStatus.textContent="offline");
