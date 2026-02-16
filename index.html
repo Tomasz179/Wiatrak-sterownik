@@ -133,6 +133,12 @@
       <span class="value"><span id="bat_a">—</span><span class="unit">A</span></span>
     </div>
 
+    <!-- NOWA KARTA: OBROTY -->
+    <div class="card">
+      <span class="label">Obroty turbiny</span>
+      <span class="value"><span id="rpm">—</span><span class="unit">RPM</span></span>
+    </div>
+
     <div class="card wind-card" id="windCard">
       <span class="label">Prędkość wiatru</span>
       <span class="value"><span id="wind">—</span><span class="unit">m/s</span></span>
@@ -154,6 +160,7 @@
     power: document.getElementById('power'),
     bat_v: document.getElementById('bat_v'),
     bat_a: document.getElementById('bat_a'),
+    rpm: document.getElementById('rpm'),     // <-- NOWE
     wind: document.getElementById('wind'),
     windCard: document.getElementById('windCard'),
     mqttStatus: document.getElementById('mqttStatus'),
@@ -165,13 +172,20 @@
     power: `${PREFIX}/sensor/moc_wiatrak/state`,
     bat_v: `${PREFIX}/sensor/napi__cie_baterii/state`,
     bat_a: `${PREFIX}/sensor/pr__d_wiatrak/state`,
+    rpm:   `${PREFIX}/sensor/obroty_wiatraka/state`, // <-- NOWE (podmień jeśli masz inny topic)
   };
 
   function num(v){
     const m=String(v).match(/-?\d+(?:[.,]\d+)?/);
     return m?parseFloat(m[0].replace(',','.')):NaN;
   }
+
+  // RPM zwykle bez części dziesiętnych, ale zostawiamy uniwersalnie:
   const fmt=n=>isNaN(n)?"—":n.toFixed(1).replace('.',',');
+
+  // Jeśli chcesz RPM jako liczba całkowita, zamień linijkę wyżej na:
+  // const fmtRpm=n=>isNaN(n)?"—":String(Math.round(n));
+  // i użyj fmtRpm przy el.rpm
 
   function windColor(w){
     el.windCard.className="card wind-card";
@@ -196,11 +210,13 @@
   client.on('message',(t,p)=>{
     msg++; last=Date.now(); diag();
     const v=num(p.toString());
+
     if(t===TOPIC_WIND){ el.wind.textContent=fmt(v); windColor(v); }
-    if(t===TOPICS.kwh) el.kwh.textContent=fmt(v);
+    if(t===TOPICS.kwh)   el.kwh.textContent=fmt(v);
     if(t===TOPICS.power) el.power.textContent=fmt(v);
     if(t===TOPICS.bat_v) el.bat_v.textContent=fmt(v);
     if(t===TOPICS.bat_a) el.bat_a.textContent=fmt(v);
+    if(t===TOPICS.rpm)   el.rpm.textContent=fmt(v); // <-- NOWE
   });
 
   client.on('offline',()=>el.mqttStatus.textContent="offline");
@@ -210,7 +226,3 @@
 
 </body>
 </html>
-
-
-
-
